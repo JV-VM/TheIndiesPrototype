@@ -5,20 +5,31 @@
   "description": "Distributed prototype platform for creator asset workflows.",
   "packageManager": "pnpm@10.11.0",
   "engines": {
-    "node": ">=20 <21"
+    "node": ">=22 <23"
   },
   "scripts": {
     "dev": "turbo run dev --parallel",
     "build": "turbo run build",
     "typecheck": "turbo run typecheck",
     "lint": "turbo run lint",
+    "test": "turbo run test",
     "format": "prettier --check .",
     "format:write": "prettier --write .",
-    "clean": "turbo run clean"
+    "clean": "turbo run clean",
+    "docker:config": "docker compose config",
+    "docker:up": "docker compose up --build",
+    "docker:up:detached": "docker compose up -d --build",
+    "docker:down": "docker compose down --remove-orphans",
+    "docker:logs": "docker compose logs -f",
+    "db:generate": "pnpm --filter @tip/api prisma:generate",
+    "db:migrate:deploy": "pnpm --filter @tip/api prisma:migrate:deploy",
+    "db:seed": "pnpm --filter @tip/api prisma:seed",
+    "smoke:auth": "node scripts/smoke-auth.mjs",
+    "smoke:workspace": "node scripts/smoke-workspace.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^9.27.0",
-    "@types/node": "^20.17.46",
+    "@types/node": "^22.15.30",
     "eslint": "^9.27.0",
     "globals": "^16.0.0",
     "prettier": "^3.5.3",

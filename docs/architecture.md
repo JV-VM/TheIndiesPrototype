@@ -11,6 +11,32 @@ TheIndiesPrototype starts with a monorepo foundation that preserves the final ar
 
 This lets the early prototype feel production-shaped without splitting services prematurely.
 
+## Runtime Topology
+
+Phase 4 introduces the first authenticated domain runtime:
+
+```text
+[ browser ] -> [ tip-web ] -> renders workspace shell
+     |                |
+     | REST + cookies |
+     +------------> [ tip-api ] -- projects/assets --> PostgreSQL
+                                     |                readiness checks
+                                     |                Redis
+                                     |                MinIO
+                                     |
+                                 [ tip-worker ]
+```
+
+Compose services currently provided:
+
+- `tip-web`
+- `tip-api`
+- `tip-worker`
+- `tip-postgres`
+- `tip-redis`
+- `tip-minio`
+- `tip-minio-init`
+
 ## Repository Layout
 
 ```text
@@ -37,6 +63,7 @@ docs/
 - `shared-ui`
 
 These boundaries should become Angular feature modules or equivalent standalone feature slices when Phase 3 implementation begins.
+The current web placeholder already reflects these boundaries through the authenticated shell, project inventory, and feature cards.
 
 ## Backend Modules
 
@@ -49,7 +76,7 @@ These boundaries should become Angular feature modules or equivalent standalone 
 - `realtime`
 - `health`
 
-These boundaries should become NestJS modules with thin controllers and isolated services.
+These boundaries are already represented in the backend module map, with auth now backed by real persistence and token flows. They should still become NestJS modules with thin controllers and isolated services in later phases.
 
 ## Worker Boundaries
 
@@ -68,4 +95,14 @@ The worker must only share contracts and types with the API, not implementation 
 
 ## Current State
 
-The repo currently uses runnable placeholder services instead of Angular, NestJS, Prisma, BullMQ, and MinIO integrations. That is intentional for Phase 1. The next phases replace placeholders with real runtime integrations without changing the structural boundaries.
+The repo still uses lightweight Node placeholder application servers instead of Angular and NestJS implementations. That remains intentional. The current baseline now combines real infrastructure with the first real authenticated domain workflow:
+
+- Prisma schema and migrations in `apps/api/prisma`
+- PostgreSQL persistence model for users, sessions, projects, assets, and jobs
+- Redis as the queue/cache backbone to be consumed more fully in Phase 6
+- MinIO as S3-compatible object storage
+- API readiness checks backed by concrete dependency probes
+- auth endpoints for register, login, refresh, logout, and protected user resolution
+- PostgreSQL-backed refresh sessions with hashed token storage and rotation
+- protected project CRUD and paginated asset record endpoints
+- frontend shell state that restores sessions through the auth API and surfaces project/asset state

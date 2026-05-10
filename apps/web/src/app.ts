@@ -1,3 +1,4 @@
+import { renderBrowserScript } from "./browser-script.js";
 import { appShellFeature } from "./features/app-shell/index.js";
 import { assetsFeature } from "./features/assets/index.js";
 import { authFeature } from "./features/auth/index.js";
@@ -6,7 +7,18 @@ import { projectsFeature } from "./features/projects/index.js";
 import { realtimeFeature } from "./features/realtime/index.js";
 import { sharedUiFeature } from "./features/shared-ui/index.js";
 
-const featureCards = [
+interface WebAppConfig {
+  apiBaseUrl: string;
+  wsBaseUrl: string;
+}
+
+interface FeatureCard {
+  label: string;
+  responsibility: string;
+  nextPhase: string;
+}
+
+const featureCards: FeatureCard[] = [
   appShellFeature,
   authFeature,
   projectsFeature,
@@ -19,158 +31,527 @@ const featureCards = [
 const styles = `
   :root {
     color-scheme: light;
-    --bg: #f4efe6;
-    --surface: rgba(255, 251, 245, 0.86);
-    --line: rgba(33, 22, 15, 0.12);
-    --ink: #20130d;
-    --muted: #6c594d;
-    --accent: #c0522f;
-    --accent-soft: rgba(192, 82, 47, 0.14);
+    --canvas: #f0e8da;
+    --ink: #1f1711;
+    --muted: #665447;
+    --line: rgba(34, 21, 12, 0.14);
+    --panel: rgba(255, 250, 243, 0.9);
+    --panel-strong: rgba(255, 247, 236, 0.98);
+    --accent: #c95e37;
+    --accent-deep: #8f3414;
+    --accent-soft: rgba(201, 94, 55, 0.12);
+    --success: #1d7d52;
+    --danger: #9f2c2c;
+    --shadow: 0 28px 80px rgba(29, 18, 10, 0.12);
   }
 
   * {
     box-sizing: border-box;
   }
 
+  html,
   body {
     margin: 0;
-    min-height: 100vh;
+    min-height: 100%;
     font-family: "Georgia", "Times New Roman", serif;
     background:
-      radial-gradient(circle at top left, rgba(192, 82, 47, 0.18), transparent 26%),
-      linear-gradient(160deg, #f6f1e7 0%, #efe4d2 100%);
+      radial-gradient(circle at top left, rgba(201, 94, 55, 0.22), transparent 24%),
+      radial-gradient(circle at bottom right, rgba(94, 60, 35, 0.12), transparent 28%),
+      linear-gradient(180deg, #f5efe4 0%, #e6d8c1 100%);
     color: var(--ink);
   }
 
-  main {
-    width: min(1120px, calc(100% - 32px));
-    margin: 0 auto;
-    padding: 48px 0 72px;
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    background-image:
+      linear-gradient(rgba(34, 21, 12, 0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(34, 21, 12, 0.03) 1px, transparent 1px);
+    background-size: 24px 24px;
+    mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.65), transparent 100%);
   }
 
-  .hero {
+  body[data-auth="true"] {
+    background:
+      radial-gradient(circle at top left, rgba(201, 94, 55, 0.16), transparent 24%),
+      linear-gradient(180deg, #f2ebdf 0%, #e1d0b5 100%);
+  }
+
+  #app {
+    width: min(1240px, calc(100% - 32px));
+    margin: 0 auto;
+    padding: 32px 0 64px;
+  }
+
+  .hero-shell {
+    display: grid;
+    grid-template-columns: minmax(0, 1.2fr) minmax(320px, 420px);
+    gap: 24px;
+    align-items: start;
+  }
+
+  .hero-panel,
+  .auth-panel,
+  .shell-sidebar,
+  .shell-main,
+  .status-strip,
+  .content-card,
+  .feature-card,
+  .workspace-pane,
+  .asset-row,
+  .project-card {
+    border: 1px solid var(--line);
+    border-radius: 28px;
+    background: var(--panel);
+    backdrop-filter: blur(14px);
+    box-shadow: var(--shadow);
+  }
+
+  .hero-panel {
+    padding: 28px;
+    display: grid;
+    gap: 20px;
+  }
+
+  .eyebrow,
+  .mini-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    width: fit-content;
+    padding: 8px 12px;
+    border-radius: 999px;
+    border: 1px solid rgba(201, 94, 55, 0.2);
+    background: var(--accent-soft);
+    font-size: 12px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--accent-deep);
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  p {
+    margin: 0;
+  }
+
+  .hero-panel h1 {
+    font-size: clamp(42px, 7vw, 82px);
+    line-height: 0.94;
+    max-width: 700px;
+  }
+
+  .hero-panel > p,
+  .auth-panel p,
+  .status-strip p,
+  .content-card p,
+  .feature-card p,
+  .shell-nav-note,
+  .empty-state p,
+  .workspace-pane p,
+  .asset-row p,
+  .project-card p {
+    color: var(--muted);
+    line-height: 1.65;
+  }
+
+  .hero-grid,
+  .status-grid,
+  .content-grid,
+  .feature-grid {
+    display: grid;
+    gap: 14px;
+  }
+
+  .hero-grid {
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  }
+
+  .status-grid {
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  }
+
+  .content-grid {
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  }
+
+  .feature-grid {
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  }
+
+  .hero-blade {
+    padding: 16px;
+    border-radius: 22px;
+    background: rgba(255, 249, 240, 0.88);
+    border: 1px solid var(--line);
+  }
+
+  .hero-blade strong,
+  .status-strip strong,
+  .content-card strong,
+  .feature-card strong,
+  .workspace-pane strong,
+  .project-card strong,
+  .asset-row strong {
+    display: block;
+    margin-bottom: 6px;
+    font-size: 12px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+
+  .auth-panel {
+    padding: 24px;
+    display: grid;
+    gap: 18px;
+    background: var(--panel-strong);
+  }
+
+  .mode-switch {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+  }
+
+  .mode-button,
+  .primary-button,
+  .ghost-button,
+  .shell-link,
+  .project-card {
+    appearance: none;
+    border: 1px solid transparent;
+    border-radius: 16px;
+    cursor: pointer;
+    font: inherit;
+    transition:
+      transform 160ms ease,
+      background-color 160ms ease,
+      border-color 160ms ease,
+      color 160ms ease;
+  }
+
+  .mode-button,
+  .ghost-button,
+  .shell-link {
+    background: rgba(255, 249, 242, 0.9);
+    color: var(--ink);
+    border-color: var(--line);
+  }
+
+  .project-card {
+    width: 100%;
+    text-align: left;
+    background: rgba(255, 249, 242, 0.78);
+    color: var(--ink);
+    border-color: var(--line);
+    padding: 18px;
+  }
+
+  .project-card[data-active="true"] {
+    background: rgba(31, 23, 17, 0.94);
+    border-color: rgba(31, 23, 17, 0.94);
+    color: #fff9f2;
+  }
+
+  .project-card[data-active="true"] p,
+  .project-card[data-active="true"] strong {
+    color: inherit;
+  }
+
+  .mode-button {
+    padding: 12px 14px;
+  }
+
+  .mode-button[data-active="true"] {
+    background: var(--ink);
+    color: #fff9f2;
+    border-color: var(--ink);
+  }
+
+  .primary-button {
+    padding: 14px 18px;
+    background: linear-gradient(135deg, var(--accent) 0%, var(--accent-deep) 100%);
+    color: white;
+  }
+
+  .ghost-button {
+    padding: 12px 14px;
+  }
+
+  .primary-button:hover,
+  .ghost-button:hover,
+  .mode-button:hover,
+  .shell-link:hover,
+  .project-card:hover {
+    transform: translateY(-1px);
+  }
+
+  .primary-button:disabled,
+  .ghost-button:disabled {
+    cursor: not-allowed;
+    opacity: 0.7;
+    transform: none;
+  }
+
+  form {
+    display: grid;
+    gap: 14px;
+  }
+
+  label {
+    display: grid;
+    gap: 8px;
+    font-size: 14px;
+    color: var(--muted);
+  }
+
+  input,
+  textarea,
+  select {
+    width: 100%;
+    padding: 14px 16px;
+    border-radius: 16px;
+    border: 1px solid rgba(34, 21, 12, 0.12);
+    background: rgba(255, 253, 248, 0.96);
+    color: var(--ink);
+    font: inherit;
+  }
+
+  textarea {
+    min-height: 116px;
+    resize: vertical;
+  }
+
+  input:focus,
+  textarea:focus,
+  select:focus {
+    outline: 2px solid rgba(201, 94, 55, 0.3);
+    outline-offset: 2px;
+  }
+
+  .form-actions,
+  .project-actions,
+  .pagination,
+  .inline-actions {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+
+  .field-grid,
+  .workspace-grid {
     display: grid;
     gap: 16px;
-    padding: 24px;
-    border: 1px solid var(--line);
-    border-radius: 24px;
-    background: var(--surface);
-    backdrop-filter: blur(12px);
-    box-shadow: 0 20px 60px rgba(27, 16, 10, 0.08);
   }
 
-  .eyebrow {
-    letter-spacing: 0.16em;
-    text-transform: uppercase;
-    font-size: 12px;
-    color: var(--muted);
+  .field-grid {
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   }
 
-  h1 {
-    margin: 0;
-    font-size: clamp(42px, 8vw, 76px);
-    line-height: 0.95;
+  .workspace-grid {
+    grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);
   }
 
-  .hero p {
-    margin: 0;
-    max-width: 720px;
-    font-size: 18px;
-    line-height: 1.6;
-    color: var(--muted);
+  .workspace-pane,
+  .status-strip,
+  .content-card,
+  .feature-card,
+  .asset-row {
+    padding: 18px;
   }
 
-  .chips {
+  .project-stack,
+  .asset-list,
+  .workspace-stack {
+    display: grid;
+    gap: 14px;
+  }
+
+  .project-card-head,
+  .asset-row-head,
+  .list-header,
+  .shell-header {
     display: flex;
-    flex-wrap: wrap;
+    justify-content: space-between;
     gap: 12px;
+    align-items: start;
+    flex-wrap: wrap;
   }
 
-  .chip {
-    padding: 10px 14px;
-    border-radius: 999px;
-    background: var(--accent-soft);
-    color: var(--accent);
-    border: 1px solid rgba(192, 82, 47, 0.2);
+  .message {
+    min-height: 24px;
     font-size: 14px;
   }
 
-  .grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-    gap: 16px;
-    margin-top: 24px;
-  }
-
-  article {
-    border: 1px solid var(--line);
-    border-radius: 20px;
-    padding: 20px;
-    background: rgba(255, 252, 248, 0.9);
-    min-height: 220px;
-  }
-
-  article h2 {
-    margin: 0 0 12px;
-    font-size: 26px;
-  }
-
-  article p {
-    margin: 0 0 12px;
-    line-height: 1.55;
+  .message[data-tone="neutral"] {
     color: var(--muted);
   }
 
-  article strong {
-    display: block;
-    margin-top: 16px;
+  .message[data-tone="success"] {
+    color: var(--success);
+  }
+
+  .message[data-tone="danger"] {
+    color: var(--danger);
+  }
+
+  .muted-note {
     font-size: 13px;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  .shell {
+    display: grid;
+    grid-template-columns: 280px minmax(0, 1fr);
+    gap: 22px;
+  }
+
+  .shell-sidebar {
+    padding: 22px;
+    display: grid;
+    gap: 18px;
+    align-content: start;
+  }
+
+  .shell-main {
+    padding: 22px;
+    display: grid;
+    gap: 18px;
+  }
+
+  .shell-nav {
+    display: grid;
+    gap: 10px;
+  }
+
+  .shell-link {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 14px;
+    text-align: left;
+  }
+
+  .shell-link[data-active="true"] {
+    background: var(--ink);
+    color: #fff9f2;
+    border-color: var(--ink);
+  }
+
+  .shell-header h2 {
+    font-size: clamp(30px, 5vw, 54px);
+    line-height: 0.98;
+  }
+
+  .status-value {
+    font-size: 28px;
+    margin-top: 6px;
+  }
+
+  .dependency-chip,
+  .summary-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    border-radius: 999px;
+    background: rgba(255, 249, 242, 0.9);
+    border: 1px solid var(--line);
+    font-size: 13px;
     color: var(--ink);
+  }
+
+  .dependency-chip[data-status="healthy"],
+  .summary-chip[data-status="completed"] {
+    color: var(--success);
+  }
+
+  .dependency-chip[data-status="unhealthy"],
+  .summary-chip[data-status="failed"] {
+    color: var(--danger);
+  }
+
+  .summary-chip[data-status="processing"],
+  .summary-chip[data-status="queued"] {
+    color: var(--accent-deep);
+  }
+
+  .chip-cluster {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .session-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 14px;
+    border-radius: 999px;
+    background: rgba(255, 249, 242, 0.95);
+    border: 1px solid var(--line);
+    font-size: 13px;
+    color: var(--muted);
+  }
+
+  .code-pill {
+    font-family: "Courier New", monospace;
+    font-size: 12px;
+  }
+
+  .empty-state {
+    padding: 22px;
+    border-radius: 22px;
+    border: 1px dashed rgba(34, 21, 12, 0.18);
+    background: rgba(255, 250, 243, 0.72);
+  }
+
+  .section-divider {
+    margin-top: 8px;
+    padding-top: 16px;
+    border-top: 1px solid var(--line);
+  }
+
+  @media (max-width: 1080px) {
+    .workspace-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  @media (max-width: 920px) {
+    .hero-shell,
+    .shell {
+      grid-template-columns: 1fr;
+    }
+
+    #app {
+      width: min(100%, calc(100% - 24px));
+      padding-top: 20px;
+    }
   }
 `;
 
-export function renderPage(): string {
-  const cards = featureCards
-    .map(
-      (feature) => `
-        <article>
-          <h2>${feature.label}</h2>
-          <p>${feature.responsibility}</p>
-          <strong>Next Phase</strong>
-          <p>${feature.nextPhase}</p>
-        </article>
-      `
-    )
-    .join("");
-
+export function renderPage(config: WebAppConfig): string {
   return `<!doctype html>
   <html lang="en">
     <head>
       <meta charset="utf-8" />
       <meta name="viewport" content="width=device-width, initial-scale=1" />
-      <title>TheIndiesPrototype Web Foundation</title>
+      <title>TheIndiesPrototype Workspace Shell</title>
       <style>${styles}</style>
     </head>
     <body>
-      <main>
-        <section class="hero">
-          <span class="eyebrow">Phase 1 Foundation</span>
-          <h1>TheIndiesPrototype</h1>
-          <p>
-            This placeholder web app already mirrors the future frontend modular monolith
-            structure. Each card below maps directly to a feature area that will become a
-            concrete Angular module in later phases.
-          </p>
-          <div class="chips">
-            <span class="chip">Angular target</span>
-            <span class="chip">Feature-based UI boundaries</span>
-            <span class="chip">Typed API integration later</span>
-          </div>
-        </section>
-        <section class="grid">${cards}</section>
-      </main>
+      <div id="app"></div>
+      <script type="module">${renderBrowserScript({
+        apiBaseUrl: config.apiBaseUrl,
+        wsBaseUrl: config.wsBaseUrl,
+        featureCards
+      })}</script>
     </body>
   </html>`;
 }

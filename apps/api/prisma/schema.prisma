@@ -1,0 +1,121 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum AssetKind {
+  image
+  audio
+  video
+  document
+}
+
+enum AssetStatus {
+  draft
+  uploaded
+  queued
+  processing
+  completed
+  failed
+}
+
+enum JobKind {
+  thumbnail_generation
+}
+
+enum JobStatus {
+  queued
+  active
+  completed
+  failed
+}
+
+model User {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  passwordHash String
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  projects     Project[]
+  assets       Asset[]
+  jobs         Job[]
+  sessions     Session[]
+}
+
+model Session {
+  id               String    @id @default(cuid())
+  userId           String
+  refreshTokenHash String
+  expiresAt        DateTime
+  createdAt        DateTime  @default(now())
+  revokedAt        DateTime?
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model Project {
+  id          String    @id @default(cuid())
+  userId      String
+  name        String
+  description String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  owner       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  assets      Asset[]
+  jobs        Job[]
+
+  @@index([userId])
+}
+
+model Asset {
+  id               String      @id @default(cuid())
+  projectId        String
+  userId           String
+  kind             AssetKind
+  status           AssetStatus @default(draft)
+  originalFilename String
+  contentType      String
+  byteSize         BigInt
+  objectKey        String?
+  metadata         Json?
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+  owner            User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project          Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  jobs             Job[]
+
+  @@index([projectId])
+  @@index([userId])
+}
+
+model Job {
+  id            String    @id @default(cuid())
+  assetId       String
+  projectId     String
+  userId        String
+  kind          JobKind   @default(thumbnail_generation)
+  status        JobStatus @default(queued)
+  queueName     String
+  attempts      Int       @default(0)
+  maxAttempts   Int       @default(3)
+  payload       Json?
+  result        Json?
+  failureReason String?
+  startedAt     DateTime?
+  completedAt   DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  asset         Asset     @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  owner         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project       Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([assetId])
+  @@index([projectId])
+  @@index([userId])
+  @@index([status])
+}

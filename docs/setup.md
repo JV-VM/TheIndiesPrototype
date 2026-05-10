@@ -2,7 +2,7 @@
 
 ## Current Prerequisites
 
-- Node.js `20.x`
+- Node.js `22.x`
 - `pnpm` `10.11.0`
 
 On this machine, `pnpm` is installed under `$HOME/.npm-global/bin`, so add it to `PATH` first if needed:
@@ -23,9 +23,53 @@ pnpm install
 pnpm build
 pnpm lint
 pnpm typecheck
+pnpm test
+pnpm smoke:workspace
 ```
 
-## Placeholder Runtime Commands
+## Dockerized Runtime
+
+Bring up the local stack:
+
+```bash
+docker compose up -d --build
+```
+
+Apply the first migration and seed the database:
+
+```bash
+docker compose run --rm tip-api pnpm --filter @tip/api prisma:migrate:deploy
+docker compose run --rm tip-api pnpm --filter @tip/api prisma:seed
+```
+
+Verify the authenticated prototype flow:
+
+```bash
+node scripts/smoke-auth.mjs
+node scripts/smoke-workspace.mjs
+```
+
+Default host endpoints from the current root `.env.example`:
+
+- web: `http://localhost:13000`
+- api: `http://localhost:13001`
+- api readiness: `http://localhost:13001/ready`
+- postgres: `localhost:15432`
+- redis: `localhost:16379`
+- minio api: `http://localhost:19000`
+- minio console: `http://localhost:19001`
+
+Seeded demo credentials:
+
+- email: `demo@theindiesprototype.local`
+- password: `Prototype123!`
+
+Seeded demo workspace data:
+
+- project: `Demo Workspace`
+- assets: `cover-art.png` (`draft`) and `teaser-trailer.mp4` (`processing`)
+
+## Host-Run Placeholder Commands
 
 ```bash
 pnpm --filter @tip/web dev
@@ -43,10 +87,13 @@ TIP_DRY_RUN=1 pnpm --filter @tip/worker dev
 
 ## Environment Files
 
-- copy `.env.example` at the repo root when Phase 2 infrastructure work begins
-- each app already contains its own `.env.example` for service-specific values
+- copy `.env.example` at the repo root for Dockerized local development
+- each app also contains its own `.env.example` for service-specific local runs outside Docker
 
 ## Notes
 
-- Angular, NestJS, Prisma, Redis, PostgreSQL, MinIO, and BullMQ are not wired yet in this phase
-- this setup document will expand during the Docker and persistence phases
+- Prisma, PostgreSQL, Redis, and MinIO are now wired into the running prototype baseline
+- the current auth strategy uses short-lived access tokens plus an `HttpOnly` refresh-token cookie
+- Phase 4 adds protected project CRUD, asset metadata records, pagination, and lifecycle filters
+- Angular, NestJS, BullMQ, and real upload/processing workflows remain future phases
+- The Docker development stack is the authoritative runtime baseline and is expected to run on Node `22.x`

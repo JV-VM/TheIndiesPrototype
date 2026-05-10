@@ -16,13 +16,6 @@
     "declaration": true,
     "sourceMap": true,
     "resolveJsonModule": true,
-    "isolatedModules": true,
-    "baseUrl": ".",
-    "paths": {
-      "@tip/contracts": ["packages/contracts/src/index.ts"],
-      "@tip/shared": ["packages/shared/src/index.ts"],
-      "@tip/types": ["packages/types/src/index.ts"],
-      "@tip/ui": ["packages/ui/src/index.ts"]
-    }
+    "isolatedModules": true
   }
 }

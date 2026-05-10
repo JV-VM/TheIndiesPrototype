@@ -3,5 +3,5 @@ export const projectsFeature = {
   label: "Projects",
   responsibility:
     "Owns workspace and project views, user-scoped resource browsing, and project actions.",
-  nextPhase: "Project CRUD and asset inventory"
+  nextPhase: "Uploads and project-level collaboration rules"
 } as const;

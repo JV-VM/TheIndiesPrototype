@@ -1,0 +1,14 @@
+.git
+.agents
+.codex
+node_modules
+**/node_modules
+dist
+**/dist
+.turbo
+**/.turbo
+coverage
+*.log
+.env
+.env.local
+.env.*.local

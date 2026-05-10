@@ -3,6 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "dependencies": {
+    "@tip/contracts": "workspace:*",
+    "@tip/types": "workspace:*"
+  },
   "scripts": {
     "dev": "node --import tsx src/dev-server.ts",
     "build": "tsc -p tsconfig.json",

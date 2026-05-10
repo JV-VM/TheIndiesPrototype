@@ -11,6 +11,13 @@ Deliver a locally functional, dockerized, extensively documented, and deployable
 
 The roadmap below turns the product scope into an implementation sequence that increases complexity deliberately instead of mixing distributed concerns too early.
 
+Current progress as of 2026-05-10:
+
+- Phase 1 completed
+- Phase 2 completed
+- Phase 3 completed
+- Phase 4 completed
+
 ## Prototype Finish Line
 
 The prototype is considered complete when all of the following are true:

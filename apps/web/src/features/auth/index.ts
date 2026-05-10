@@ -3,5 +3,5 @@ export const authFeature = {
   label: "Authentication",
   responsibility:
     "Handles sign-in, sign-up, session restore, and protected route state.",
-  nextPhase: "JWT and refresh-token flows"
+  nextPhase: "Permissions hardening and richer account controls"
 } as const;
