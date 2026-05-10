@@ -1,9 +1,16 @@
 import assert from "node:assert/strict";
+import { WebSocket } from "ws";
 
 const apiBaseUrl =
   process.env.TIP_API_PUBLIC_ORIGIN ?? "http://localhost:13001";
-const email = `phase4-${Date.now()}@theindiesprototype.local`;
+const wsBaseUrl =
+  process.env.TIP_API_PUBLIC_WS_ORIGIN ?? "ws://localhost:13001";
+const email = `phase7-${Date.now()}@theindiesprototype.local`;
 const password = "Prototype123!";
+const imagePayload = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAAEUlEQVR4nGO4E6XxH4QZYAwAVLgJdQuRUMkAAAAASUVORK5CYII=",
+  "base64"
+);
 
 let refreshCookie = "";
 let accessToken = "";
@@ -25,7 +32,7 @@ async function main() {
     token: accessToken,
     json: {
       name: "Workspace Smoke",
-      description: "Phase 4 smoke test project."
+      description: "Phase 7 smoke test project."
     }
   });
 
@@ -59,70 +66,124 @@ async function main() {
     true
   );
 
-  const createdAsset = await requestJson(`/projects/${projectId}/assets`, {
-    method: "POST",
-    token: accessToken,
-    json: {
-      kind: "image",
-      status: "draft",
-      originalFilename: "cover-art.png",
-      contentType: "image/png",
-      byteSize: 2048
-    }
-  });
-
-  assert.equal(createdAsset.status, 201);
-  assert.equal(createdAsset.body.status, "draft");
-  const assetId = createdAsset.body.id;
-
-  const updatedAsset = await requestJson(
-    `/projects/${projectId}/assets/${assetId}`,
+  const uploadedAsset = await requestBinary(
+    `/projects/${projectId}/assets/upload?kind=image&filename=cover-art.png`,
     {
-      method: "PATCH",
+      method: "POST",
       token: accessToken,
-      json: {
-        status: "completed"
-      }
+      contentType: "image/png",
+      body: imagePayload
     }
   );
 
-  assert.equal(updatedAsset.status, 200);
-  assert.equal(updatedAsset.body.status, "completed");
+  assert.equal(uploadedAsset.status, 201);
+  assert.equal(uploadedAsset.body.status, "uploaded");
+  assert.equal(uploadedAsset.body.objectKey.includes(projectId), true);
+  const assetId = uploadedAsset.body.id;
+  const realtimeSession = await openRealtimeSession(projectId);
 
-  const assetList = await requestJson(
-    `/projects/${projectId}/assets?status=completed&page=1&pageSize=6`,
-    {
+  try {
+    const createdJob = await requestJson(
+      `/projects/${projectId}/assets/${assetId}/jobs`,
+      {
+        method: "POST",
+        token: accessToken,
+        json: {}
+      }
+    );
+
+    assert.equal(createdJob.status, 201);
+    assert.equal(createdJob.body.status, "queued");
+    const jobId = createdJob.body.id;
+
+    const realtimeOutcome = await waitForRealtimeJobSignals(
+      realtimeSession,
+      jobId
+    );
+    assert.equal(realtimeOutcome.statuses.includes("queued"), true);
+    assert.equal(realtimeOutcome.statuses.includes("completed"), true);
+    assert.equal(realtimeOutcome.notificationLevel, "success");
+
+    const completedJob = await requestJson(
+      `/projects/${projectId}/jobs/${jobId}`,
+      {
+        method: "GET",
+        token: accessToken
+      }
+    );
+
+    assert.equal(completedJob.status, 200);
+    assert.equal(completedJob.body.status, "completed");
+    assert.equal(completedJob.body.result.outputs.length, 1);
+
+    const assetList = await requestJson(
+      `/projects/${projectId}/assets?status=completed&page=1&pageSize=6`,
+      {
+        method: "GET",
+        token: accessToken
+      }
+    );
+
+    assert.equal(assetList.status, 200);
+    assert.equal(assetList.body.items.length, 1);
+    assert.equal(assetList.body.items[0].id, assetId);
+    assert.equal(
+      assetList.body.items[0].objectKey,
+      uploadedAsset.body.objectKey
+    );
+
+    const jobList = await requestJson(
+      `/projects/${projectId}/jobs?status=completed&page=1&pageSize=6`,
+      {
+        method: "GET",
+        token: accessToken
+      }
+    );
+
+    assert.equal(jobList.status, 200);
+    assert.equal(jobList.body.items.length, 1);
+    assert.equal(jobList.body.items[0].id, jobId);
+
+    const downloadedThumbnail = await requestBinary(
+      `/projects/${projectId}/jobs/${jobId}/thumbnail`,
+      {
+        method: "GET",
+        token: accessToken
+      }
+    );
+
+    assert.equal(downloadedThumbnail.status, 200);
+    assert.equal(downloadedThumbnail.contentType.includes("image/png"), true);
+    assert.equal(downloadedThumbnail.body.byteLength > 0, true);
+
+    const projectDetail = await requestJson(`/projects/${projectId}`, {
       method: "GET",
       token: accessToken
-    }
-  );
+    });
 
-  assert.equal(assetList.status, 200);
-  assert.equal(assetList.body.items.length, 1);
-  assert.equal(assetList.body.items[0].id, assetId);
+    assert.equal(projectDetail.status, 200);
+    assert.equal(projectDetail.body.assetStatusCounts.completed, 1);
+    assert.equal(projectDetail.body.assetCount, 1);
 
-  const projectDetail = await requestJson(`/projects/${projectId}`, {
-    method: "GET",
-    token: accessToken
-  });
-
-  assert.equal(projectDetail.status, 200);
-  assert.equal(projectDetail.body.assetStatusCounts.completed, 1);
-  assert.equal(projectDetail.body.assetCount, 1);
-
-  console.log(
-    JSON.stringify(
-      {
-        status: "ok",
-        apiBaseUrl,
-        user: email,
-        projectId,
-        assetId
-      },
-      null,
-      2
-    )
-  );
+    console.log(
+      JSON.stringify(
+        {
+          status: "ok",
+          apiBaseUrl,
+          wsBaseUrl,
+          user: email,
+          projectId,
+          assetId,
+          jobId,
+          realtimeStatuses: realtimeOutcome.statuses
+        },
+        null,
+        2
+      )
+    );
+  } finally {
+    closeRealtimeSession(realtimeSession);
+  }
 }
 
 async function requestJson(pathname, options) {
@@ -157,6 +218,222 @@ async function requestJson(pathname, options) {
     status: response.status,
     body
   };
+}
+
+async function requestBinary(pathname, options) {
+  const headers = {};
+
+  if (options.token) {
+    headers.authorization = `Bearer ${options.token}`;
+  }
+
+  if (options.cookie) {
+    headers.cookie = options.cookie;
+  }
+
+  if (options.contentType) {
+    headers["content-type"] = options.contentType;
+  }
+
+  const response = await fetch(`${apiBaseUrl}${pathname}`, {
+    method: options.method,
+    headers,
+    credentials: "include",
+    body: options.body
+  });
+
+  updateCookieJar(response);
+  const contentType = response.headers.get("content-type") ?? "";
+  const bodyBuffer = Buffer.from(await response.arrayBuffer());
+  const body = contentType.includes("application/json")
+    ? JSON.parse(bodyBuffer.toString("utf8"))
+    : bodyBuffer;
+
+  return {
+    status: response.status,
+    body,
+    contentType
+  };
+}
+
+async function openRealtimeSession(projectId) {
+  const socket = new WebSocket(`${wsBaseUrl}/realtime`);
+  const messages = [];
+
+  socket.addEventListener("message", (event) => {
+    const payload = parseRealtimePayload(event.data);
+
+    if (payload) {
+      messages.push(payload);
+    }
+  });
+
+  await waitForSocketOpen(socket);
+  await waitForSocketMessage(
+    messages,
+    (message) => message.type === "ready",
+    5_000,
+    "socket ready"
+  );
+
+  socket.send(
+    JSON.stringify({
+      type: "authenticate",
+      accessToken,
+      projectId
+    })
+  );
+
+  await waitForSocketMessage(
+    messages,
+    (message) => message.type === "authenticated",
+    5_000,
+    "socket authentication"
+  );
+  await waitForSocketMessage(
+    messages,
+    (message) =>
+      message.type === "subscribed" && message.projectId === projectId,
+    5_000,
+    "project subscription"
+  );
+
+  return {
+    socket,
+    messages,
+    projectId
+  };
+}
+
+async function waitForRealtimeJobSignals(session, jobId) {
+  const startedAt = Date.now();
+  const seenStatuses = new Set();
+  let successNotification = null;
+
+  while (Date.now() - startedAt < 15_000) {
+    for (const message of session.messages) {
+      if (message.type !== "event") {
+        continue;
+      }
+
+      if (
+        message.event.type === "job.updated" &&
+        message.event.jobId === jobId
+      ) {
+        seenStatuses.add(message.event.jobStatus);
+
+        if (message.event.jobStatus === "failed") {
+          throw new Error(
+            `Realtime job event failed: ${message.event.failureReason ?? "Unknown worker failure"}`
+          );
+        }
+      }
+
+      if (
+        message.event.type === "notification.created" &&
+        message.event.jobId === jobId &&
+        message.event.level === "success"
+      ) {
+        successNotification = message.event;
+      }
+    }
+
+    if (
+      seenStatuses.has("queued") &&
+      seenStatuses.has("completed") &&
+      successNotification
+    ) {
+      return {
+        statuses: Array.from(seenStatuses),
+        notificationLevel: successNotification.level
+      };
+    }
+
+    await sleep(100);
+  }
+
+  throw new Error(
+    `Timed out waiting for realtime job updates. Seen statuses: ${Array.from(seenStatuses).join(", ") || "none"}`
+  );
+}
+
+async function waitForSocketOpen(socket) {
+  if (socket.readyState === WebSocket.OPEN) {
+    return;
+  }
+
+  await new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      reject(new Error("Timed out waiting for websocket open."));
+    }, 5_000);
+
+    socket.addEventListener(
+      "open",
+      () => {
+        clearTimeout(timeout);
+        resolve();
+      },
+      {
+        once: true
+      }
+    );
+    socket.addEventListener(
+      "error",
+      () => {
+        clearTimeout(timeout);
+        reject(new Error("Realtime websocket failed to open."));
+      },
+      {
+        once: true
+      }
+    );
+  });
+}
+
+async function waitForSocketMessage(messages, predicate, timeoutMs, label) {
+  const startedAt = Date.now();
+
+  while (Date.now() - startedAt < timeoutMs) {
+    const foundMessage = messages.find(predicate);
+
+    if (foundMessage) {
+      return foundMessage;
+    }
+
+    await sleep(50);
+  }
+
+  throw new Error(`Timed out waiting for ${label}.`);
+}
+
+function parseRealtimePayload(rawData) {
+  const text =
+    typeof rawData === "string"
+      ? rawData
+      : rawData instanceof ArrayBuffer
+        ? Buffer.from(rawData).toString("utf8")
+        : Buffer.from(rawData).toString("utf8");
+
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
+
+function closeRealtimeSession(session) {
+  if (
+    session.socket.readyState === WebSocket.OPEN ||
+    session.socket.readyState === WebSocket.CONNECTING
+  ) {
+    session.socket.close(1000, "smoke_complete");
+  }
+}
+
+function sleep(milliseconds) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, milliseconds);
+  });
 }
 
 function updateCookieJar(response) {

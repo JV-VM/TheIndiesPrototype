@@ -1,0 +1,95 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - master
+      - "feature/**"
+      - "phase/**"
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.11.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm build
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Test
+        run: pnpm test
+
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    needs:
+      - quality
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.11.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Start Docker stack
+        run: docker compose up -d --build
+
+      - name: Run migrations
+        run: docker compose run --rm tip-api pnpm --filter @tip/api prisma:migrate:deploy
+
+      - name: Seed database
+        run: docker compose run --rm tip-api pnpm --filter @tip/api prisma:seed
+
+      - name: Smoke auth
+        run: node scripts/smoke-auth.mjs
+
+      - name: Smoke workspace
+        run: node scripts/smoke-workspace.mjs
+
+      - name: Dump service logs on failure
+        if: failure()
+        run: docker compose logs --no-color
+
+      - name: Shutdown Docker stack
+        if: always()
+        run: docker compose down -v --remove-orphans

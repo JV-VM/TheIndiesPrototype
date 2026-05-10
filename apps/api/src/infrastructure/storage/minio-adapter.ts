@@ -1,6 +1,16 @@
-import { ListBucketsCommand, S3Client } from "@aws-sdk/client-s3";
+import {
+  GetObjectCommand,
+  ListBucketsCommand,
+  PutObjectCommand,
+  S3Client
+} from "@aws-sdk/client-s3";
 
-import type { DependencyReport, StorageAdapter } from "../ports.js";
+import type {
+  DependencyReport,
+  PutStorageObjectInput,
+  StorageAdapter,
+  StoredObject
+} from "../ports.js";
 
 export class MinioStorageAdapter implements StorageAdapter {
   constructor(
@@ -46,5 +56,55 @@ export class MinioStorageAdapter implements StorageAdapter {
           error instanceof Error ? error.message : "Unknown MinIO failure."
       };
     }
+  }
+
+  async putObject(input: PutStorageObjectInput): Promise<void> {
+    const client = this.createClient();
+
+    await client.send(
+      new PutObjectCommand({
+        Bucket: this.bucket,
+        Key: input.objectKey,
+        Body: input.body,
+        ContentType: input.contentType,
+        Metadata: input.metadata
+      })
+    );
+  }
+
+  async getObject(objectKey: string): Promise<StoredObject> {
+    const client = this.createClient();
+    const response = await client.send(
+      new GetObjectCommand({
+        Bucket: this.bucket,
+        Key: objectKey
+      })
+    );
+
+    if (!response.Body) {
+      throw new Error(`MinIO object "${objectKey}" returned no body.`);
+    }
+
+    const body = Buffer.from(await response.Body.transformToByteArray());
+
+    return {
+      objectKey,
+      body,
+      contentType: response.ContentType ?? "application/octet-stream",
+      byteSize: body.byteLength,
+      etag: response.ETag ?? null
+    };
+  }
+
+  private createClient(): S3Client {
+    return new S3Client({
+      endpoint: this.endpoint,
+      region: this.region,
+      forcePathStyle: true,
+      credentials: {
+        accessKeyId: this.accessKey,
+        secretAccessKey: this.secretKey
+      }
+    });
   }
 }

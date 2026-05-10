@@ -2,16 +2,28 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 
 import type { RuntimeConfig } from "../../config/runtime.js";
 import { requireAuthenticatedUser } from "../../http/authenticated-user.js";
+import { readBinaryBody } from "../../http/request-binary.js";
 import { readJsonBody } from "../../http/request-body.js";
 import { readQueryParams } from "../../http/query-params.js";
-import { createApiHeaders, sendEmpty, sendJson } from "../../http/response.js";
+import {
+  createApiHeaders,
+  sendBuffer,
+  sendEmpty,
+  sendJson
+} from "../../http/response.js";
+import { enforceWriteRateLimit } from "../../http/write-rate-limit.js";
 import type { AssetsService } from "../assets/service.js";
+import {
+  sanitizeAssetFilename,
+  validateAssetUpload
+} from "../assets/upload-policy.js";
 import type { AuthService } from "../auth/service.js";
 import {
   createAssetSchema,
   createProjectSchema,
   listProjectAssetsQuerySchema,
   listProjectsQuerySchema,
+  uploadProjectAssetQuerySchema,
   updateAssetSchema,
   updateProjectSchema
 } from "./schemas.js";
@@ -23,6 +35,9 @@ interface ProjectsHttpContext {
   projectsService: ProjectsService;
   assetsService: AssetsService;
 }
+
+const PROJECT_WRITE_RATE_LIMIT_MAX_HITS = 40;
+const PROJECT_UPLOAD_RATE_LIMIT_MAX_HITS = 20;
 
 export async function handleProjectsRequest(
   request: IncomingMessage,
@@ -40,6 +55,25 @@ export async function handleProjectsRequest(
   if (request.method === "OPTIONS") {
     sendEmpty(response, 204, baseHeaders);
     return true;
+  }
+
+  if (
+    request.method === "POST" ||
+    request.method === "PATCH" ||
+    request.method === "DELETE"
+  ) {
+    const isUploadRoute = url.pathname.includes("/assets/upload");
+    const allowed = enforceWriteRateLimit(request, response, {
+      scope: isUploadRoute ? "project-upload-write" : "project-write",
+      maxHits: isUploadRoute
+        ? PROJECT_UPLOAD_RATE_LIMIT_MAX_HITS
+        : PROJECT_WRITE_RATE_LIMIT_MAX_HITS,
+      baseHeaders
+    });
+
+    if (!allowed) {
+      return true;
+    }
   }
 
   const user = await requireAuthenticatedUser(request, context.authService);
@@ -163,6 +197,37 @@ export async function handleProjectsRequest(
       return false;
     }
 
+    if (assetId === "upload" && request.method === "POST") {
+      const query = readQueryParams(url, uploadProjectAssetQuerySchema);
+      const upload = await readBinaryBody(request, {
+        maxBytes: context.config.uploadMaxBytes
+      });
+      const validatedUpload = validateAssetUpload({
+        kind: query.kind,
+        contentType: upload.contentType,
+        byteSize: upload.byteSize,
+        maxBytes: context.config.uploadMaxBytes,
+        originalFilename: query.filename
+      });
+      const asset = await context.assetsService.uploadProjectAsset(
+        user.id,
+        projectId,
+        {
+          kind: query.kind,
+          originalFilename: query.filename,
+          contentType: validatedUpload.contentType,
+          byteSize: upload.byteSize,
+          body: upload.body
+        }
+      );
+      sendJson(response, 201, asset, baseHeaders);
+      return true;
+    }
+
+    if (!projectId || !assetId) {
+      return false;
+    }
+
     if (request.method === "PATCH") {
       const payload = await readJsonBody(request, updateAssetSchema);
       const asset = await context.assetsService.updateProjectAsset(
@@ -199,6 +264,32 @@ export async function handleProjectsRequest(
     }
   }
 
+  if (
+    segments.length === 5 &&
+    segments[2] === "assets" &&
+    segments[4] === "source"
+  ) {
+    const projectId = segments[1];
+    const assetId = segments[3];
+
+    if (!projectId || !assetId || request.method !== "GET") {
+      return false;
+    }
+
+    const source = await context.assetsService.readProjectAssetSource(
+      user.id,
+      projectId,
+      assetId
+    );
+
+    sendBuffer(response, 200, source.body, source.contentType, {
+      ...baseHeaders,
+      "content-disposition": createAttachmentDisposition(source.filename),
+      "cache-control": "private, no-store"
+    });
+    return true;
+  }
+
   sendJson(
     response,
     404,
@@ -211,4 +302,10 @@ export async function handleProjectsRequest(
     baseHeaders
   );
   return true;
+}
+
+function createAttachmentDisposition(filename: string): string {
+  const asciiFilename = sanitizeAssetFilename(filename).replaceAll('"', "");
+
+  return `attachment; filename="${asciiFilename}"; filename*=UTF-8''${encodeURIComponent(filename)}`;
 }

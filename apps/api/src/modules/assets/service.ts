@@ -1,5 +1,6 @@
 import { Prisma, type PrismaClient } from "@prisma/client";
 import type {
+  AssetKind,
   AssetSummary,
   CreateAssetInput,
   ProjectAssetCollection,
@@ -7,11 +8,37 @@ import type {
 } from "@tip/types";
 
 import { HttpError } from "../../http/errors.js";
+import type { StorageAdapter } from "../../infrastructure/ports.js";
 import type { ListProjectAssetsQuery } from "../projects/schemas.js";
+import {
+  buildAssetSourceObjectKey,
+  sanitizeAssetFilename
+} from "./upload-policy.js";
+
+interface AssetStorageContext {
+  adapter: Pick<StorageAdapter, "getObject" | "putObject">;
+  bucket: string;
+}
+
+export interface UploadProjectAssetInput {
+  kind: AssetKind;
+  originalFilename: string;
+  contentType: string;
+  byteSize: number;
+  body: Buffer;
+}
+
+export interface ProjectAssetSource {
+  filename: string;
+  contentType: string;
+  byteSize: number;
+  body: Buffer;
+}
 
 export class AssetsService {
   constructor(
-    private readonly prisma: Pick<PrismaClient, "project" | "asset">
+    private readonly prisma: Pick<PrismaClient, "project" | "asset">,
+    private readonly storageContext?: AssetStorageContext
   ) {}
 
   async listProjectAssets(
@@ -143,6 +170,159 @@ export class AssetsService {
     return mapAssetSummary(asset);
   }
 
+  async uploadProjectAsset(
+    ownerId: string,
+    projectId: string,
+    input: UploadProjectAssetInput
+  ): Promise<AssetSummary> {
+    await this.ensureOwnedProject(ownerId, projectId);
+    const storage = this.requireStorageContext();
+
+    const draftAsset = await this.prisma.asset.create({
+      data: {
+        userId: ownerId,
+        projectId,
+        kind: input.kind,
+        status: "draft",
+        originalFilename: input.originalFilename,
+        contentType: input.contentType,
+        byteSize: BigInt(input.byteSize)
+      }
+    });
+
+    const sanitizedFilename = sanitizeAssetFilename(input.originalFilename);
+    const objectKey = buildAssetSourceObjectKey(
+      projectId,
+      draftAsset.id,
+      sanitizedFilename
+    );
+    const uploadedAt = new Date().toISOString();
+
+    try {
+      await storage.adapter.putObject({
+        objectKey,
+        body: input.body,
+        contentType: input.contentType,
+        metadata: {
+          assetid: draftAsset.id,
+          ownerid: ownerId,
+          projectid: projectId,
+          uploadflow: "api-proxy"
+        }
+      });
+    } catch (error: unknown) {
+      const failureReason =
+        error instanceof Error
+          ? error.message
+          : "Unknown object storage error.";
+
+      await this.prisma.asset.update({
+        where: {
+          id: draftAsset.id
+        },
+        data: {
+          status: "failed",
+          metadata: {
+            uploadFlow: "api-proxy",
+            uploadAttemptedAt: uploadedAt,
+            uploadFailureReason: failureReason,
+            storageBucket: storage.bucket,
+            sanitizedFilename
+          }
+        }
+      });
+
+      throw new HttpError(
+        502,
+        "Asset upload failed while writing the file to object storage.",
+        "storage_upload_failed",
+        {
+          assetId: draftAsset.id
+        }
+      );
+    }
+
+    const asset = await this.prisma.asset.update({
+      where: {
+        id: draftAsset.id
+      },
+      data: {
+        status: "uploaded",
+        objectKey,
+        metadata: {
+          uploadFlow: "api-proxy",
+          uploadSucceededAt: uploadedAt,
+          storageBucket: storage.bucket,
+          sanitizedFilename
+        }
+      }
+    });
+
+    return mapAssetSummary(asset);
+  }
+
+  async readProjectAssetSource(
+    ownerId: string,
+    projectId: string,
+    assetId: string
+  ): Promise<ProjectAssetSource> {
+    const storage = this.requireStorageContext();
+    const asset = await this.prisma.asset.findFirst({
+      where: {
+        id: assetId,
+        projectId,
+        userId: ownerId
+      },
+      select: {
+        id: true,
+        originalFilename: true,
+        contentType: true,
+        byteSize: true,
+        objectKey: true
+      }
+    });
+
+    if (!asset) {
+      throw new HttpError(404, "Asset was not found.", "asset_not_found");
+    }
+
+    if (!asset.objectKey) {
+      throw new HttpError(
+        409,
+        "This asset does not have a stored source object yet.",
+        "asset_source_unavailable"
+      );
+    }
+
+    try {
+      const storedObject = await storage.adapter.getObject(asset.objectKey);
+
+      return {
+        filename: asset.originalFilename,
+        contentType: storedObject.contentType || asset.contentType,
+        byteSize: Number(asset.byteSize),
+        body: storedObject.body
+      };
+    } catch {
+      throw new HttpError(
+        502,
+        "The source object could not be retrieved from storage.",
+        "storage_download_failed",
+        {
+          assetId
+        }
+      );
+    }
+  }
+
+  private requireStorageContext(): AssetStorageContext {
+    if (!this.storageContext) {
+      throw new Error("AssetsService storage adapter is not configured.");
+    }
+
+    return this.storageContext;
+  }
+
   private async ensureOwnedProject(
     ownerId: string,
     projectId: string
@@ -193,6 +373,7 @@ function mapAssetSummary(asset: {
   originalFilename: string;
   contentType: string;
   byteSize: bigint;
+  objectKey: string | null;
   metadata: Prisma.JsonValue;
   createdAt: Date;
   updatedAt: Date;
@@ -206,6 +387,7 @@ function mapAssetSummary(asset: {
     originalFilename: asset.originalFilename,
     contentType: asset.contentType,
     byteSize: Number(asset.byteSize),
+    objectKey: asset.objectKey,
     metadata: toSerializableMetadata(asset.metadata),
     createdAt: asset.createdAt.toISOString(),
     updatedAt: asset.updatedAt.toISOString()

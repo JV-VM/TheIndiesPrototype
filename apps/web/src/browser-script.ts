@@ -18,7 +18,9 @@ export function renderBrowserScript(config: BrowserScriptConfig): string {
     import {
       assetKinds,
       assetLifecycleStatuses,
-      createApiClient
+      createApiClient,
+      jobLifecycleStatuses,
+      realtimeRoutes
     } from "/api-client.js";
 
     const config = ${JSON.stringify({
@@ -50,7 +52,32 @@ export function renderBrowserScript(config: BrowserScriptConfig): string {
       assetStatus: "all",
       assetKind: "all",
       assetPage: 1,
-      assetPageSize: 6
+      assetPageSize: 6,
+      jobsBusy: false,
+      jobs: null,
+      jobsStatus: "all",
+      jobsPage: 1,
+      jobsPageSize: 6,
+      uploadBusy: false,
+      uploadProgress: 0,
+      uploadKind: "image",
+      pendingUploadFile: null,
+      uploadDragActive: false,
+      realtimeSocket: null,
+      realtimeStatus: "idle",
+      realtimeConnectionId: null,
+      realtimeAuthenticated: false,
+      realtimeProjectId: null,
+      realtimeFallbackPollIntervalMs: 5_000,
+      realtimeFallbackActive: false,
+      realtimeReconnectAttempt: 0,
+      realtimeReconnectTimerId: null,
+      realtimeFallbackTimerId: null,
+      realtimeResyncTimerId: null,
+      realtimeAuthRefreshing: false,
+      realtimeLastEventAt: null,
+      realtimeLastEventLabel: "Waiting for the realtime session to come online.",
+      notifications: []
     };
 
     const appElement = document.getElementById("app");
@@ -85,8 +112,11 @@ export function renderBrowserScript(config: BrowserScriptConfig): string {
       state.selectedProjectId = null;
       state.selectedProject = null;
       state.assets = null;
+      state.jobs = null;
       state.projectsPage = 1;
       state.assetPage = 1;
+      state.jobsPage = 1;
+      clearPendingUpload();
     }
 
     function errorMessage(error, fallback) {
@@ -116,13 +146,465 @@ export function renderBrowserScript(config: BrowserScriptConfig): string {
       return new Intl.NumberFormat("en").format(byteSize) + " bytes";
     }
 
+    function inferAssetKindFromFile(file) {
+      const contentType = (file.type || "").toLowerCase();
+
+      if (contentType.startsWith("image/")) {
+        return "image";
+      }
+
+      if (contentType.startsWith("audio/")) {
+        return "audio";
+      }
+
+      if (contentType.startsWith("video/")) {
+        return "video";
+      }
+
+      return "document";
+    }
+
+    function clearPendingUpload() {
+      state.pendingUploadFile = null;
+      state.uploadProgress = 0;
+      state.uploadDragActive = false;
+    }
+
+    function rememberPendingUpload(file) {
+      state.pendingUploadFile = file;
+      state.uploadKind = inferAssetKindFromFile(file);
+      state.uploadProgress = 0;
+      state.uploadDragActive = false;
+    }
+
+    function saveDownloadedBlob(blob, filename) {
+      const objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = objectUrl;
+      link.download = filename;
+      document.body.append(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1_000);
+    }
+
     function countLifecycleCoverage(counts) {
       return assetLifecycleStatuses.filter((status) => counts[status] > 0).length;
     }
 
+    function buildRealtimeSocketUrl() {
+      return \`\${config.wsBaseUrl}\${realtimeRoutes.socket}\`;
+    }
+
+    function clearRealtimeReconnectTimer() {
+      if (state.realtimeReconnectTimerId !== null) {
+        window.clearTimeout(state.realtimeReconnectTimerId);
+        state.realtimeReconnectTimerId = null;
+      }
+    }
+
+    function clearRealtimeFallbackTimer() {
+      if (state.realtimeFallbackTimerId !== null) {
+        window.clearInterval(state.realtimeFallbackTimerId);
+        state.realtimeFallbackTimerId = null;
+      }
+    }
+
+    function clearRealtimeResyncTimer() {
+      if (state.realtimeResyncTimerId !== null) {
+        window.clearTimeout(state.realtimeResyncTimerId);
+        state.realtimeResyncTimerId = null;
+      }
+    }
+
+    function disconnectRealtime(nextStatus = "idle") {
+      const socket = state.realtimeSocket;
+
+      clearRealtimeReconnectTimer();
+      clearRealtimeFallbackTimer();
+      clearRealtimeResyncTimer();
+
+      state.realtimeSocket = null;
+      state.realtimeStatus = nextStatus;
+      state.realtimeConnectionId = null;
+      state.realtimeAuthenticated = false;
+      state.realtimeProjectId = null;
+      state.realtimeFallbackActive = false;
+      state.realtimeReconnectAttempt = 0;
+
+      if (
+        socket &&
+        (socket.readyState === WebSocket.OPEN ||
+          socket.readyState === WebSocket.CONNECTING)
+      ) {
+        socket.close(1000, "client_shutdown");
+      }
+    }
+
+    function pushNotification(notification) {
+      state.notifications = [notification, ...state.notifications].slice(0, 6);
+    }
+
+    function realtimeStatusValue() {
+      if (state.realtimeFallbackActive) {
+        return "poll";
+      }
+
+      switch (state.realtimeStatus) {
+        case "connected":
+          return "live";
+        case "authenticating":
+          return "auth";
+        case "connecting":
+          return "dial";
+        case "reconnecting":
+          return "retry";
+        default:
+          return "idle";
+      }
+    }
+
+    function realtimeStatusLabel() {
+      if (state.realtimeFallbackActive && state.realtimeStatus !== "connected") {
+        return "Polling fallback active";
+      }
+
+      switch (state.realtimeStatus) {
+        case "connected":
+          return "Socket live";
+        case "authenticating":
+          return "Authenticating socket";
+        case "connecting":
+          return "Connecting socket";
+        case "reconnecting":
+          return "Reconnecting socket";
+        default:
+          return "Realtime idle";
+      }
+    }
+
+    function summarizeRealtimeEvent(event) {
+      if (event.type === "notification.created") {
+        return \`\${event.title}: \${event.message}\`;
+      }
+
+      if (event.jobStatus === "active") {
+        return \`Job \${event.jobId} is processing \${event.assetId}.\`;
+      }
+
+      if (event.jobStatus === "completed") {
+        return \`Job \${event.jobId} completed successfully.\`;
+      }
+
+      if (event.jobStatus === "failed") {
+        return \`Job \${event.jobId} failed: \${event.failureReason ?? "Unknown worker failure."}\`;
+      }
+
+      return \`Job \${event.jobId} returned to the queue.\`;
+    }
+
+    function startFallbackPolling() {
+      if (
+        !state.user ||
+        state.realtimeFallbackTimerId !== null ||
+        !state.selectedProjectId
+      ) {
+        return;
+      }
+
+      state.realtimeFallbackActive = true;
+      state.realtimeFallbackTimerId = window.setInterval(() => {
+        if (
+          !state.user ||
+          !state.selectedProjectId ||
+          state.projectsBusy ||
+          state.assetsBusy ||
+          state.jobsBusy ||
+          state.uploadBusy
+        ) {
+          return;
+        }
+
+        void loadProjects({
+          focusProjectId: state.selectedProjectId,
+          suppressRender: true
+        }).finally(() => {
+          render();
+        });
+      }, state.realtimeFallbackPollIntervalMs);
+    }
+
+    function stopFallbackPolling() {
+      clearRealtimeFallbackTimer();
+      state.realtimeFallbackActive = false;
+    }
+
+    function scheduleRealtimeReconnect(reason) {
+      if (!state.user || state.realtimeReconnectTimerId !== null) {
+        return;
+      }
+
+      state.realtimeReconnectAttempt += 1;
+      const attempt = state.realtimeReconnectAttempt;
+      const delayMs = Math.min(1_000 * 2 ** (attempt - 1), 10_000);
+      state.realtimeStatus = "reconnecting";
+      state.realtimeLastEventLabel = \`\${reason} Reconnect attempt \${attempt} in \${Math.round(delayMs / 1000)}s.\`;
+      render();
+
+      state.realtimeReconnectTimerId = window.setTimeout(() => {
+        state.realtimeReconnectTimerId = null;
+        ensureRealtimeConnection();
+      }, delayMs);
+    }
+
+    function scheduleRealtimeResync(reason) {
+      if (!state.user) {
+        return;
+      }
+
+      state.realtimeLastEventLabel = reason;
+      clearRealtimeResyncTimer();
+      state.realtimeResyncTimerId = window.setTimeout(() => {
+        state.realtimeResyncTimerId = null;
+
+        void loadProjects({
+          focusProjectId: state.selectedProjectId,
+          suppressRender: true
+        }).finally(() => {
+          render();
+        });
+      }, 240);
+    }
+
+    function sendRealtimeMessage(message) {
+      if (
+        !state.realtimeSocket ||
+        state.realtimeSocket.readyState !== WebSocket.OPEN
+      ) {
+        return;
+      }
+
+      state.realtimeSocket.send(JSON.stringify(message));
+    }
+
+    async function recoverRealtimeAuthentication() {
+      if (state.realtimeAuthRefreshing) {
+        return;
+      }
+
+      state.realtimeAuthRefreshing = true;
+
+      try {
+        await refreshSession();
+        syncRealtimeAuthentication();
+      } catch {
+        disconnectRealtime("idle");
+        handleSignedOutState("Session expired. Sign in again to continue.");
+      } finally {
+        state.realtimeAuthRefreshing = false;
+        render();
+      }
+    }
+
+    async function handleRealtimeMessage(rawData) {
+      if (typeof rawData !== "string") {
+        return;
+      }
+
+      let message;
+
+      try {
+        message = JSON.parse(rawData);
+      } catch {
+        return;
+      }
+
+      switch (message.type) {
+        case "ready":
+          state.realtimeConnectionId = message.connectionId;
+          state.realtimeLastEventLabel = "Socket opened. Waiting for authentication to finish.";
+          render();
+          return;
+        case "authenticated":
+          state.realtimeStatus = "connected";
+          state.realtimeAuthenticated = true;
+          state.realtimeReconnectAttempt = 0;
+          state.realtimeLastEventLabel = "Realtime session authenticated.";
+          render();
+          return;
+        case "subscribed":
+          state.realtimeStatus = "connected";
+          state.realtimeProjectId = message.projectId ?? null;
+          state.realtimeFallbackPollIntervalMs =
+            message.fallbackPollIntervalMs ?? state.realtimeFallbackPollIntervalMs;
+          stopFallbackPolling();
+          scheduleRealtimeResync("Realtime subscription synchronized.");
+          render();
+          return;
+        case "event":
+          state.realtimeLastEventAt = message.event.occurredAt;
+          state.realtimeLastEventLabel = summarizeRealtimeEvent(message.event);
+
+          if (message.event.type === "notification.created") {
+            pushNotification({
+              id: message.event.eventId,
+              level: message.event.level,
+              title: message.event.title,
+              message: message.event.message,
+              occurredAt: message.event.occurredAt
+            });
+          }
+
+          if (message.event.refreshProjectState) {
+            scheduleRealtimeResync(state.realtimeLastEventLabel);
+          }
+
+          render();
+          return;
+        case "error":
+          if (message.code === "invalid_access_token") {
+            state.realtimeAuthenticated = false;
+            await recoverRealtimeAuthentication();
+            return;
+          }
+
+          state.realtimeLastEventLabel = message.message;
+
+          if (!message.recoverable) {
+            setMessage(message.message, "danger");
+          }
+
+          startFallbackPolling();
+          render();
+          return;
+        case "pong":
+          return;
+        default:
+          return;
+      }
+    }
+
+    function syncRealtimeAuthentication() {
+      if (!state.user || !state.accessToken) {
+        return;
+      }
+
+      if (
+        state.realtimeSocket &&
+        state.realtimeSocket.readyState === WebSocket.OPEN
+      ) {
+        state.realtimeStatus = "authenticating";
+        state.realtimeAuthenticated = false;
+        sendRealtimeMessage({
+          type: "authenticate",
+          accessToken: state.accessToken,
+          projectId: state.selectedProjectId
+        });
+        render();
+        return;
+      }
+
+      ensureRealtimeConnection();
+    }
+
+    function syncRealtimeProjectSubscription() {
+      if (!state.user) {
+        return;
+      }
+
+      if (
+        state.realtimeSocket &&
+        state.realtimeSocket.readyState === WebSocket.OPEN &&
+        state.realtimeAuthenticated
+      ) {
+        sendRealtimeMessage({
+          type: "subscribe_project",
+          projectId: state.selectedProjectId
+        });
+      }
+
+      if (state.realtimeFallbackActive) {
+        stopFallbackPolling();
+        startFallbackPolling();
+      }
+    }
+
+    function ensureRealtimeConnection() {
+      if (!state.user || !state.accessToken) {
+        return;
+      }
+
+      if (
+        state.realtimeSocket &&
+        (state.realtimeSocket.readyState === WebSocket.OPEN ||
+          state.realtimeSocket.readyState === WebSocket.CONNECTING)
+      ) {
+        return;
+      }
+
+      clearRealtimeReconnectTimer();
+      const socket = new WebSocket(buildRealtimeSocketUrl());
+
+      state.realtimeSocket = socket;
+      state.realtimeStatus =
+        state.realtimeReconnectAttempt > 0 ? "reconnecting" : "connecting";
+      state.realtimeLastEventLabel = \`Opening realtime socket at \${buildRealtimeSocketUrl()}.\`;
+      render();
+
+      socket.addEventListener("open", () => {
+        if (state.realtimeSocket !== socket) {
+          return;
+        }
+
+        state.realtimeStatus = "authenticating";
+        state.realtimeAuthenticated = false;
+        sendRealtimeMessage({
+          type: "authenticate",
+          accessToken: state.accessToken,
+          projectId: state.selectedProjectId
+        });
+        render();
+      });
+
+      socket.addEventListener("message", (event) => {
+        void handleRealtimeMessage(event.data);
+      });
+
+      socket.addEventListener("close", () => {
+        if (state.realtimeSocket !== socket) {
+          return;
+        }
+
+        state.realtimeSocket = null;
+        state.realtimeConnectionId = null;
+        state.realtimeAuthenticated = false;
+        state.realtimeProjectId = null;
+
+        if (!state.user) {
+          state.realtimeStatus = "idle";
+          stopFallbackPolling();
+          render();
+          return;
+        }
+
+        startFallbackPolling();
+        scheduleRealtimeReconnect(
+          "Realtime connection closed unexpectedly."
+        );
+      });
+
+      socket.addEventListener("error", () => {
+        state.realtimeLastEventLabel =
+          "Realtime transport reported a socket error. Reconnect flow is active.";
+        render();
+      });
+    }
+
     function handleSignedOutState(message) {
+      disconnectRealtime("idle");
       persistToken(null);
       state.user = null;
+      state.notifications = [];
       clearWorkspaceState();
       document.body.dataset.auth = "false";
       setMessage(message, "neutral");
@@ -133,6 +615,7 @@ export function renderBrowserScript(config: BrowserScriptConfig): string {
       state.user = payload.user;
       document.body.dataset.auth = "true";
       setMessage("Authenticated session active.", "success");
+      syncRealtimeAuthentication();
     }
 
     async function fetchProfile() {
@@ -194,17 +677,20 @@ export function renderBrowserScript(config: BrowserScriptConfig): string {
       if (!state.selectedProjectId) {
         state.selectedProject = null;
         state.assets = null;
+        state.jobs = null;
+        stopFallbackPolling();
         return;
       }
 
       state.assetsBusy = true;
+      state.jobsBusy = true;
 
       if (!options.suppressRender) {
         render();
       }
 
       try {
-        const [project, assets] = await withAuthenticatedClient(() =>
+        const [project, assets, jobs] = await withAuthenticatedClient(() =>
           Promise.all([
             apiClient.projects.get(state.accessToken, state.selectedProjectId),
             apiClient.assets.listByProject(state.accessToken, state.selectedProjectId, {
@@ -213,16 +699,23 @@ export function renderBrowserScript(config: BrowserScriptConfig): string {
               pageSize: state.assetPageSize,
               status: normalizeFilterValue(state.assetStatus),
               kind: normalizeFilterValue(state.assetKind)
+            }),
+            apiClient.jobs.listByProject(state.accessToken, state.selectedProjectId, {
+              page: state.jobsPage,
+              pageSize: state.jobsPageSize,
+              status: normalizeFilterValue(state.jobsStatus)
             })
           ])
         );
 
         state.selectedProject = project;
         state.assets = assets;
+        state.jobs = jobs;
       } catch (error) {
         setMessage(errorMessage(error, "Could not load project details."), "danger");
       } finally {
         state.assetsBusy = false;
+        state.jobsBusy = false;
 
         if (!options.suppressRender) {
           render();
@@ -258,12 +751,15 @@ export function renderBrowserScript(config: BrowserScriptConfig): string {
           (project) => project.id === focusProjectId
         );
         state.selectedProjectId = focusProject?.id ?? collection.items[0]?.id ?? null;
+        syncRealtimeProjectSubscription();
 
         if (state.selectedProjectId) {
           await loadSelectedProject({ suppressRender: true });
         } else {
           state.selectedProject = null;
           state.assets = null;
+          state.jobs = null;
+          stopFallbackPolling();
         }
       } catch (error) {
         setMessage(errorMessage(error, "Could not load projects."), "danger");
@@ -300,6 +796,7 @@ export function renderBrowserScript(config: BrowserScriptConfig): string {
 
       if (state.user) {
         await loadProjects({ suppressRender: true });
+        ensureRealtimeConnection();
       }
 
       state.busy = false;
@@ -380,6 +877,7 @@ export function renderBrowserScript(config: BrowserScriptConfig): string {
         form.reset();
         state.activeSection = "projects";
         state.assetPage = 1;
+        state.jobsPage = 1;
         setMessage("Project created. Asset records can now be attached to it.", "success");
         await loadProjects({ focusProjectId: project.id });
       } catch (error) {
@@ -441,7 +939,10 @@ export function renderBrowserScript(config: BrowserScriptConfig): string {
 
       state.selectedProjectId = projectId;
       state.assetPage = 1;
+      state.jobsPage = 1;
       state.activeSection = "projects";
+      clearPendingUpload();
+      syncRealtimeProjectSubscription();
       await loadSelectedProject();
     }
 
@@ -452,6 +953,18 @@ export function renderBrowserScript(config: BrowserScriptConfig): string {
       state.assetStatus = String(formData.get("status") ?? "all");
       state.assetKind = String(formData.get("kind") ?? "all");
       state.assetPage = 1;
+      await loadSelectedProject();
+    }
+
+    async function handleJobFilterSubmit(event) {
+      event.preventDefault();
+      const formData = new FormData(event.currentTarget);
+      state.jobsStatus = String(formData.get("status") ?? "all");
+      state.jobsPage = 1;
+      await loadSelectedProject();
+    }
+
+    async function handleJobsRefresh() {
       await loadSelectedProject();
     }
 
@@ -482,6 +995,110 @@ export function renderBrowserScript(config: BrowserScriptConfig): string {
         await loadProjects({ focusProjectId: state.selectedProject.id });
       } catch (error) {
         setMessage(errorMessage(error, "Could not create the asset record."), "danger");
+      }
+    }
+
+    function handleUploadInputChange(event) {
+      const file = event.currentTarget.files?.[0];
+
+      if (!file) {
+        return;
+      }
+
+      rememberPendingUpload(file);
+      setMessage("Upload staged. Submit it to persist the source object in storage.", "neutral");
+      render();
+    }
+
+    function handleUploadKindChange(event) {
+      state.uploadKind = event.currentTarget.value;
+      render();
+    }
+
+    function handleUploadDragEnter(event) {
+      event.preventDefault();
+      state.uploadDragActive = true;
+      render();
+    }
+
+    function handleUploadDragOver(event) {
+      event.preventDefault();
+
+      if (!state.uploadDragActive) {
+        state.uploadDragActive = true;
+        render();
+      }
+    }
+
+    function handleUploadDragLeave(event) {
+      event.preventDefault();
+      const nextTarget = event.relatedTarget;
+
+      if (nextTarget instanceof Node && event.currentTarget.contains(nextTarget)) {
+        return;
+      }
+
+      state.uploadDragActive = false;
+      render();
+    }
+
+    function handleUploadDrop(event) {
+      event.preventDefault();
+      state.uploadDragActive = false;
+      const file = event.dataTransfer?.files?.[0];
+
+      if (!file) {
+        setMessage("Drop a supported file into the upload zone to continue.", "danger");
+        render();
+        return;
+      }
+
+      rememberPendingUpload(file);
+      setMessage("Upload staged from drag and drop. Submit when ready.", "neutral");
+      render();
+    }
+
+    async function handleAssetUpload(event) {
+      event.preventDefault();
+
+      if (!state.selectedProject || !state.pendingUploadFile || state.uploadBusy) {
+        return;
+      }
+
+      const projectId = state.selectedProject.id;
+      state.uploadBusy = true;
+      state.uploadProgress = 0;
+      setMessage("Uploading source asset to object storage...", "neutral");
+      render();
+
+      try {
+        const asset = await withAuthenticatedClient(() =>
+          apiClient.assets.uploadToProject(state.accessToken, projectId, {
+            file: state.pendingUploadFile,
+            kind: state.uploadKind,
+            onProgress(progress) {
+              state.uploadProgress = progress;
+              render();
+            }
+          })
+        );
+
+        clearPendingUpload();
+        setMessage(
+          \`Uploaded \${asset.originalFilename} into MinIO and linked it to the selected project.\`,
+          "success"
+        );
+        await loadProjects({ focusProjectId: projectId });
+      } catch (error) {
+        setMessage(errorMessage(error, "Could not upload the selected asset."), "danger");
+      } finally {
+        state.uploadBusy = false;
+
+        if (!state.pendingUploadFile) {
+          state.uploadProgress = 0;
+        }
+
+        render();
       }
     }
 
@@ -518,6 +1135,139 @@ export function renderBrowserScript(config: BrowserScriptConfig): string {
       }
     }
 
+    async function handleAssetDownload(event) {
+      if (!state.selectedProject) {
+        return;
+      }
+
+      const assetId = event.currentTarget.dataset.assetId;
+      const fallbackFilename = event.currentTarget.dataset.filename;
+
+      if (!assetId) {
+        return;
+      }
+
+      try {
+        setMessage("Preparing the source download...", "neutral");
+        render();
+        const result = await withAuthenticatedClient(() =>
+          apiClient.assets.downloadFromProject(
+            state.accessToken,
+            state.selectedProject.id,
+            assetId
+          )
+        );
+
+        saveDownloadedBlob(
+          result.blob,
+          result.filename || fallbackFilename || "asset-download"
+        );
+        setMessage("Source download started in the browser.", "success");
+      } catch (error) {
+        setMessage(errorMessage(error, "Could not download the stored asset."), "danger");
+      } finally {
+        render();
+      }
+    }
+
+    async function handleAssetProcess(event) {
+      if (!state.selectedProject) {
+        return;
+      }
+
+      const assetId = event.currentTarget.dataset.assetId;
+
+      if (!assetId) {
+        return;
+      }
+
+      try {
+        const job = await withAuthenticatedClient(() =>
+          apiClient.jobs.createForAsset(
+            state.accessToken,
+            state.selectedProject.id,
+            assetId,
+            {}
+          )
+        );
+
+        state.activeSection = "jobs";
+        state.jobsPage = 1;
+        setMessage(
+          \`Queued \${job.kind} for the selected asset. The worker will process it asynchronously.\`,
+          "success"
+        );
+        await loadProjects({ focusProjectId: state.selectedProject.id });
+      } catch (error) {
+        setMessage(errorMessage(error, "Could not queue the processing job."), "danger");
+      }
+    }
+
+    async function handleJobRetry(event) {
+      if (!state.selectedProject) {
+        return;
+      }
+
+      const jobId = event.currentTarget.dataset.jobId;
+
+      if (!jobId) {
+        return;
+      }
+
+      try {
+        await withAuthenticatedClient(() =>
+          apiClient.jobs.retryByProject(
+            state.accessToken,
+            state.selectedProject.id,
+            jobId
+          )
+        );
+
+        setMessage("Failed job requeued for another processing attempt.", "success");
+        await loadProjects({ focusProjectId: state.selectedProject.id });
+      } catch (error) {
+        setMessage(errorMessage(error, "Could not retry the failed job."), "danger");
+      }
+    }
+
+    async function handleJobDownloadThumbnail(event) {
+      if (!state.selectedProject) {
+        return;
+      }
+
+      const jobId = event.currentTarget.dataset.jobId;
+      const fallbackFilename = event.currentTarget.dataset.filename;
+
+      if (!jobId) {
+        return;
+      }
+
+      try {
+        setMessage("Preparing the processed thumbnail download...", "neutral");
+        render();
+        const result = await withAuthenticatedClient(() =>
+          apiClient.jobs.downloadThumbnail(
+            state.accessToken,
+            state.selectedProject.id,
+            jobId
+          )
+        );
+
+        saveDownloadedBlob(
+          result.blob,
+          result.filename || fallbackFilename || "thumbnail.png"
+        );
+        setMessage("Processed thumbnail download started in the browser.", "success");
+      } catch (error) {
+        setMessage(
+          errorMessage(error, "Could not download the processed thumbnail."),
+          "danger"
+        );
+      } finally {
+        render();
+      }
+    }
+
     async function handlePaginationClick(event) {
       const target = event.currentTarget.dataset.paginationTarget;
       const direction = event.currentTarget.dataset.direction;
@@ -548,6 +1298,19 @@ export function renderBrowserScript(config: BrowserScriptConfig): string {
         }
 
         state.assetPage = nextPage;
+        await loadSelectedProject();
+        return;
+      }
+
+      if (target === "jobs" && state.jobs) {
+        const nextPage =
+          direction === "next" ? state.jobsPage + 1 : state.jobsPage - 1;
+
+        if (nextPage < 1 || nextPage > state.jobs.totalPages) {
+          return;
+        }
+
+        state.jobsPage = nextPage;
         await loadSelectedProject();
       }
     }
@@ -587,7 +1350,7 @@ export function renderBrowserScript(config: BrowserScriptConfig): string {
         return \`
           <div class="empty-state">
             <strong>No projects yet</strong>
-            <p>Create the first workspace entry for this account and Phase 4 asset records will attach to it immediately.</p>
+            <p>Create the first workspace entry for this account and uploads, jobs, and derived outputs will attach to it immediately.</p>
           </div>
         \`;
       }
@@ -625,7 +1388,7 @@ export function renderBrowserScript(config: BrowserScriptConfig): string {
         return \`
           <div class="empty-state">
             <strong>No asset records yet</strong>
-            <p>This project is ready for draft metadata. Add the first asset record below to start the lifecycle history.</p>
+            <p>This project is ready for source uploads or manual draft metadata. Add the first asset below to start the lifecycle history.</p>
           </div>
         \`;
       }
@@ -644,6 +1407,11 @@ export function renderBrowserScript(config: BrowserScriptConfig): string {
                   <span>\${escapeHtml(formatDate(asset.updatedAt))}</span>
                 </span>
               </div>
+              <p class="muted-note">
+                \${asset.objectKey
+                  ? \`Stored source object: <span class="code-pill">\${escapeHtml(asset.objectKey)}</span>\`
+                  : "No source object stored yet. This record is still metadata-only."}
+              </p>
               <form data-asset-status-form="true" data-asset-id="\${asset.id}">
                 <div class="field-grid">
                   <label>
@@ -661,12 +1429,218 @@ export function renderBrowserScript(config: BrowserScriptConfig): string {
                 </div>
                 <div class="inline-actions">
                   <button class="ghost-button" type="submit">Apply Status</button>
+                  \${asset.objectKey && asset.kind === "image"
+                    ? \`<button class="ghost-button" type="button" data-asset-process="true" data-asset-id="\${asset.id}" \${asset.status === "queued" || asset.status === "processing" ? "disabled" : ""}>Queue Thumbnail Job</button>\`
+                    : ""}
+                  \${asset.objectKey
+                    ? \`<button class="ghost-button" type="button" data-asset-download="true" data-asset-id="\${asset.id}" data-filename="\${escapeHtml(asset.originalFilename)}">Download Source</button>\`
+                    : ""}
                 </div>
               </form>
             </article>
           \`
         )
         .join("")}</div>\`;
+    }
+
+    function renderJobsList() {
+      if (!state.selectedProject) {
+        return \`
+          <div class="empty-state">
+            <strong>Select a project</strong>
+            <p>Queued and completed processing jobs will appear here once a project is active.</p>
+          </div>
+        \`;
+      }
+
+      if (!state.jobs || state.jobs.items.length === 0) {
+        return \`
+          <div class="empty-state">
+            <strong>No jobs yet</strong>
+            <p>Queue a thumbnail generation job from the asset inventory to start the first worker pipeline.</p>
+          </div>
+        \`;
+      }
+
+      return \`<div class="asset-list">\${state.jobs.items
+        .map((job) => {
+          const thumbnail = job.result?.outputs?.[0] ?? null;
+
+          return \`
+            <article class="asset-row">
+              <div class="asset-row-head">
+                <div>
+                  <strong>\${escapeHtml(job.payload?.originalFilename ?? job.assetId)}</strong>
+                  <p>\${escapeHtml(job.kind)} • attempts \${job.attempts}/\${job.maxAttempts}</p>
+                </div>
+                <span class="summary-chip" data-status="\${job.status}">
+                  <strong>\${job.status}</strong>
+                  <span>\${escapeHtml(formatDate(job.updatedAt))}</span>
+                </span>
+              </div>
+              <p class="muted-note">
+                Queue: <span class="code-pill">\${escapeHtml(job.queueName)}</span>
+                • Job ID: <span class="code-pill">\${escapeHtml(job.id)}</span>
+              </p>
+              \${job.failureReason
+                ? \`<p class="message" data-tone="danger">\${escapeHtml(job.failureReason)}</p>\`
+                : ""}
+              \${thumbnail
+                ? \`<p class="muted-note">Thumbnail stored at <span class="code-pill">\${escapeHtml(thumbnail.objectKey)}</span></p>\`
+                : ""}
+              <div class="inline-actions">
+                \${job.status === "failed"
+                  ? \`<button class="ghost-button" type="button" data-job-retry="true" data-job-id="\${job.id}">Retry Job</button>\`
+                  : ""}
+                \${thumbnail
+                  ? \`<button class="ghost-button" type="button" data-job-thumbnail="true" data-job-id="\${job.id}" data-filename="\${escapeHtml(thumbnail.filename)}">Download Thumbnail</button>\`
+                  : ""}
+              </div>
+            </article>
+          \`;
+        })
+        .join("")}</div>\`;
+    }
+
+    function renderRealtimeNotifications() {
+      if (state.notifications.length === 0) {
+        return \`
+          <div class="empty-state">
+            <strong>No delivery notifications yet</strong>
+            <p>Realtime completion and failure notices for the selected account will collect here once jobs start moving through the worker.</p>
+          </div>
+        \`;
+      }
+
+      return \`<div class="asset-list">\${state.notifications
+        .map(
+          (notification) => \`
+            <article class="asset-row">
+              <div class="asset-row-head">
+                <div>
+                  <strong>\${escapeHtml(notification.title)}</strong>
+                  <p>\${escapeHtml(notification.message)}</p>
+                </div>
+                <span class="summary-chip" data-status="\${notification.level === "danger" ? "failed" : notification.level === "success" ? "completed" : "queued"}">
+                  <strong>\${escapeHtml(notification.level)}</strong>
+                  <span>\${escapeHtml(formatDate(notification.occurredAt))}</span>
+                </span>
+              </div>
+            </article>
+          \`
+        )
+        .join("")}</div>\`;
+    }
+
+    function renderRealtimePanel() {
+      const projectLabel = state.realtimeProjectId
+        ? \`Project \${state.realtimeProjectId}\`
+        : "All projects";
+
+      return \`
+        <section class="content-card">
+          <div class="list-header">
+            <div>
+              <strong>Live Delivery</strong>
+              <p>Authenticated socket updates now flow from the worker through the API and reconcile the selected project without manual refresh.</p>
+            </div>
+            <span class="code-pill">\${escapeHtml(realtimeStatusLabel())}</span>
+          </div>
+          <div class="chip-cluster">
+            <span class="summary-chip" data-status="\${state.realtimeStatus === "connected" ? "completed" : state.realtimeFallbackActive ? "queued" : "draft"}">
+              <strong>Status</strong>
+              <span>\${escapeHtml(realtimeStatusValue())}</span>
+            </span>
+            <span class="summary-chip" data-status="\${state.realtimeFallbackActive ? "queued" : "uploaded"}">
+              <strong>Fallback</strong>
+              <span>\${escapeHtml(state.realtimeFallbackActive ? \`Polling \${Math.round(state.realtimeFallbackPollIntervalMs / 1000)}s\` : "Socket only")}</span>
+            </span>
+            <span class="summary-chip" data-status="uploaded">
+              <strong>Subscription</strong>
+              <span>\${escapeHtml(projectLabel)}</span>
+            </span>
+          </div>
+          <p class="muted-note">
+            Endpoint <span class="code-pill">\${escapeHtml(buildRealtimeSocketUrl())}</span>
+            • Connection <span class="code-pill">\${escapeHtml(state.realtimeConnectionId ?? "pending")}</span>
+          </p>
+          <p class="muted-note">
+            Last signal:
+            \${escapeHtml(state.realtimeLastEventLabel)}
+            \${state.realtimeLastEventAt ? \` • \${escapeHtml(formatDate(state.realtimeLastEventAt))}\` : ""}
+          </p>
+          \${renderRealtimeNotifications()}
+        </section>
+      \`;
+    }
+
+    function renderUploadPanel() {
+      const selectedFile = state.pendingUploadFile;
+      const progressMarkup =
+        state.uploadBusy || state.uploadProgress > 0
+          ? \`
+              <div class="upload-progress" aria-live="polite">
+                <div class="upload-progress-bar">
+                  <span style="width: \${Math.max(state.uploadProgress, 6)}%"></span>
+                </div>
+                <p class="muted-note">
+                  \${state.uploadBusy
+                    ? \`Uploading \${state.uploadProgress}%\`
+                    : "Upload ready."}
+                </p>
+              </div>
+            \`
+          : "";
+
+      return \`
+        <form id="asset-upload-form">
+          <strong>Upload Source Asset</strong>
+          <div class="upload-dropzone" data-upload-dropzone="true" data-drag="\${state.uploadDragActive}">
+            <input
+              id="asset-upload-input"
+              class="visually-hidden"
+              type="file"
+              accept=".gif,.jpeg,.jpg,.json,.md,.mov,.mp3,.mp4,.ogg,.pdf,.png,.svg,.txt,.wav,.webm,.webp"
+            />
+            <p>
+              Drop one supported file here or
+              <label class="upload-picker" for="asset-upload-input">browse from disk</label>.
+            </p>
+            <p class="muted-note">
+              Supported categories: image, audio, video, and document. Current limit: 25 MB per file.
+            </p>
+            \${selectedFile
+              ? \`
+                  <div class="upload-meta">
+                    <span class="code-pill">\${escapeHtml(selectedFile.name)}</span>
+                    <span class="code-pill">\${escapeHtml(selectedFile.type || "application/octet-stream")}</span>
+                    <span class="code-pill">\${escapeHtml(formatBytes(selectedFile.size))}</span>
+                  </div>
+                \`
+              : ""}
+          </div>
+          <div class="field-grid">
+            <label>
+              Asset Kind
+              <select id="asset-upload-kind" name="kind">
+                \${assetKinds
+                  .map(
+                    (kind) => \`
+                      <option value="\${kind}" \${state.uploadKind === kind ? "selected" : ""}>\${kind}</option>
+                    \`
+                  )
+                  .join("")}
+              </select>
+            </label>
+          </div>
+          \${progressMarkup}
+          <div class="form-actions">
+            <button class="primary-button" type="submit" \${!selectedFile || state.uploadBusy ? "disabled" : ""}>
+              \${state.uploadBusy ? "Uploading..." : selectedFile ? "Upload To Storage" : "Choose A File First"}
+            </button>
+          </div>
+        </form>
+      \`;
     }
 
     function renderOverviewSection() {
@@ -686,12 +1660,12 @@ export function renderBrowserScript(config: BrowserScriptConfig): string {
           <div class="content-card">
             <strong>Selected Assets</strong>
             <div class="status-value">\${selectedProjectAssets}</div>
-            <p>Asset records exist before uploads, so metadata and lifecycle state are already first-class.</p>
+            <p>Asset records now carry either metadata-only drafts or real source objects stored behind the API boundary.</p>
           </div>
           <div class="content-card">
             <strong>Lifecycle Coverage</strong>
             <div class="status-value">\${lifecycleCoverage}/\${assetLifecycleStatuses.length}</div>
-            <p>Status transitions now exist ahead of queue execution and object storage upload work.</p>
+            <p>Status transitions now include upload, queued execution, processing, and terminal worker outcomes.</p>
           </div>
         </div>
         <div class="content-card">
@@ -702,6 +1676,66 @@ export function renderBrowserScript(config: BrowserScriptConfig): string {
               : "No project is selected yet. Create or choose a project to inspect its asset inventory."}
           </p>
           \${state.selectedProject ? renderLifecycleChips(state.selectedProject.assetStatusCounts) : ""}
+        </div>
+      \`;
+    }
+
+    function renderJobsSection() {
+      return \`
+        <div class="workspace-grid">
+          <section class="workspace-pane workspace-stack">
+            <div class="list-header">
+              <div>
+                <strong>Job Queue</strong>
+                <p>Review queued, active, completed, and failed worker activity for the selected project.</p>
+              </div>
+              <span class="code-pill">\${state.jobs ? state.jobs.totalItems : 0} total</span>
+            </div>
+            <form id="jobs-filter-form">
+              <div class="field-grid">
+                <label>
+                  Status
+                  <select name="status">
+                    <option value="all" \${state.jobsStatus === "all" ? "selected" : ""}>All statuses</option>
+                    \${jobLifecycleStatuses
+                      .map(
+                        (status) => \`
+                          <option value="\${status}" \${state.jobsStatus === status ? "selected" : ""}>\${status}</option>
+                        \`
+                      )
+                      .join("")}
+                  </select>
+                </label>
+              </div>
+              <div class="form-actions">
+                <button class="ghost-button" type="submit">Apply Job Filter</button>
+                <button class="ghost-button" type="button" id="jobs-refresh-button">Refresh Jobs</button>
+              </div>
+            </form>
+            \${state.jobsBusy ? '<p class="muted-note">Refreshing job queue...</p>' : ""}
+            \${renderJobsList()}
+            <div class="pagination">
+              <button class="ghost-button" type="button" data-pagination-target="jobs" data-direction="prev" \${!state.jobs || state.jobsPage <= 1 ? "disabled" : ""}>Previous</button>
+              <span class="muted-note">Page \${state.jobsPage} of \${state.jobs?.totalPages ?? 1}</span>
+              <button class="ghost-button" type="button" data-pagination-target="jobs" data-direction="next" \${!state.jobs || state.jobsPage >= state.jobs.totalPages ? "disabled" : ""}>Next</button>
+            </div>
+          </section>
+          <section class="workspace-pane workspace-stack">
+            <div class="content-card">
+              <strong>Worker Pipeline</strong>
+              <p>
+                The first distributed pipeline now reads uploaded image sources from MinIO, generates thumbnails with Sharp, stores the derived object back in MinIO, and persists job outcomes in PostgreSQL.
+              </p>
+            </div>
+            <div class="content-card">
+              <strong>Project Context</strong>
+              <p>
+                \${state.selectedProject
+                  ? escapeHtml(state.selectedProject.name) + " currently has " + escapeHtml(String(state.selectedProject.assetCount)) + " assets available for processing."
+                  : "Select a project from the Projects section to inspect its processing queue."}
+              </p>
+            </div>
+          </section>
         </div>
       \`;
     }
@@ -779,7 +1813,7 @@ export function renderBrowserScript(config: BrowserScriptConfig): string {
                   <div class="list-header">
                     <div>
                       <strong>Asset Inventory</strong>
-                      <p>Filter draft records and advance lifecycle state before upload and processing phases.</p>
+                      <p>Upload source files into MinIO, filter the resulting inventory, and keep manual draft records when needed.</p>
                     </div>
                     <span class="code-pill">\${state.assets ? state.assets.totalItems : 0} visible</span>
                   </div>
@@ -820,8 +1854,9 @@ export function renderBrowserScript(config: BrowserScriptConfig): string {
                       <button class="ghost-button" type="submit">Apply Asset Filters</button>
                     </div>
                   </form>
+                  \${renderUploadPanel()}
                   <form id="asset-create-form">
-                    <strong>Create Asset Record</strong>
+                    <strong>Create Manual Draft Record</strong>
                     <div class="field-grid">
                       <label>
                         Filename
@@ -885,17 +1920,7 @@ export function renderBrowserScript(config: BrowserScriptConfig): string {
         case "projects":
           return renderProjectsSection();
         case "jobs":
-          return \`
-            <div class="content-card">
-              <strong>Jobs</strong>
-              <p>
-                Queue execution still lands in the next distributed phase, but it will now inherit stable project and asset identifiers instead of raw placeholder records.
-              </p>
-              <p>
-                Current workspace baseline: \${escapeHtml(String(state.projects?.totalItems ?? 0))} projects and \${escapeHtml(String(state.selectedProject?.assetCount ?? 0))} assets ready for queue attachment.
-              </p>
-            </div>
-          \`;
+          return renderJobsSection();
         default:
           return renderOverviewSection();
       }
@@ -905,11 +1930,12 @@ export function renderBrowserScript(config: BrowserScriptConfig): string {
       return \`
         <section class="hero-shell">
           <section class="hero-panel">
-            <span class="eyebrow">Phase 4 Workspace</span>
-            <h1>Projects and asset records now live behind a real user boundary.</h1>
+            <span class="eyebrow">Phase 7 Live Sync</span>
+            <h1>Projects, uploads, worker jobs, and live delivery now move as one protected workflow.</h1>
             <p>
-              The prototype now supports protected project CRUD, paginated asset inventories,
-              lifecycle tracking, and frontend workspace state on top of the Phase 3 auth foundation.
+              The prototype now supports protected project CRUD, drag-and-drop uploads,
+              BullMQ-backed worker execution, Sharp thumbnail generation, authenticated output download,
+              and WebSocket-backed status delivery with reconnect and polling fallback.
             </p>
             <div class="hero-grid">
               <article class="hero-blade">
@@ -917,12 +1943,16 @@ export function renderBrowserScript(config: BrowserScriptConfig): string {
                 <p>User-owned projects can now be created, updated, filtered, and removed.</p>
               </article>
               <article class="hero-blade">
-                <strong>Asset Inventory</strong>
-                <p>Asset records now exist before upload so metadata and status transitions are already modeled.</p>
+                <strong>Asset Storage</strong>
+                <p>Supported source files now move through the API into MinIO with persisted object keys.</p>
               </article>
               <article class="hero-blade">
-                <strong>Next Layer</strong>
-                <p>Phase 5 can focus on upload and object storage because the domain model is already active.</p>
+                <strong>Async Execution</strong>
+                <p>Uploaded images can now be queued for thumbnail generation and tracked through persisted job states.</p>
+              </article>
+              <article class="hero-blade">
+                <strong>Live Status</strong>
+                <p>Completion and failure notifications now reconcile the frontend without relying on manual refresh.</p>
               </article>
             </div>
             <div class="status-strip">
@@ -969,7 +1999,7 @@ export function renderBrowserScript(config: BrowserScriptConfig): string {
             <div>
               <h3>\${escapeHtml(state.user.email)}</h3>
               <p class="shell-nav-note">
-                This account now owns projects, draft asset metadata, and future queue-visible workflows.
+                This account now owns projects, uploaded assets, and queue-visible worker workflows.
               </p>
             </div>
             <div class="shell-nav">
@@ -996,9 +2026,9 @@ export function renderBrowserScript(config: BrowserScriptConfig): string {
             <div class="shell-header">
               <div>
                 <span class="mini-label">Protected Experience</span>
-                <h2>Identity, projects, and asset inventory now share one modular shell.</h2>
+                <h2>Identity, projects, and processing state now stay synchronized inside one modular shell.</h2>
               </div>
-              <span class="session-pill">Access token present • refresh cookie managed server-side</span>
+              <span class="session-pill">Access token present • \${escapeHtml(realtimeStatusLabel().toLowerCase())}</span>
             </div>
             <div class="status-grid">
               <div class="status-strip">
@@ -1007,16 +2037,17 @@ export function renderBrowserScript(config: BrowserScriptConfig): string {
                 <p>Project list results are now filtered, paginated, and enforced per account.</p>
               </div>
               <div class="status-strip">
-                <strong>Selected Project</strong>
+                <strong>Stored Assets</strong>
                 <div class="status-value">\${state.selectedProject?.assetCount ?? 0}</div>
-                <p>Asset counts and lifecycle summaries update on the currently active project.</p>
+                <p>Asset counts and lifecycle summaries update on the currently active project after uploads and worker jobs complete.</p>
               </div>
               <div class="status-strip">
-                <strong>WebSocket Target</strong>
-                <div class="status-value">Prepared</div>
-                <p>The future realtime base remains tracked as <span class="code-pill">\${escapeHtml(config.wsBaseUrl)}</span>.</p>
+                <strong>Queue Runtime</strong>
+                <div class="status-value">\${escapeHtml(realtimeStatusValue())}</div>
+                <p>Live updates now travel over <span class="code-pill">\${escapeHtml(buildRealtimeSocketUrl())}</span> with automatic resync and polling fallback.</p>
               </div>
             </div>
+            \${renderRealtimePanel()}
             \${renderActiveSection()}
             <section>
               <span class="mini-label">Feature Map</span>
@@ -1079,6 +2110,34 @@ export function renderBrowserScript(config: BrowserScriptConfig): string {
         .forEach((element) => {
           element.addEventListener("submit", handleAssetStatusSubmit);
         });
+      document
+        .querySelectorAll("[data-asset-download]")
+        .forEach((element) => {
+          element.addEventListener("click", handleAssetDownload);
+        });
+      document
+        .querySelectorAll("[data-asset-process]")
+        .forEach((element) => {
+          element.addEventListener("click", handleAssetProcess);
+        });
+      document
+        .querySelectorAll("[data-job-retry]")
+        .forEach((element) => {
+          element.addEventListener("click", handleJobRetry);
+        });
+      document
+        .querySelectorAll("[data-job-thumbnail]")
+        .forEach((element) => {
+          element.addEventListener("click", handleJobDownloadThumbnail);
+        });
+      document
+        .querySelectorAll("[data-upload-dropzone]")
+        .forEach((element) => {
+          element.addEventListener("dragenter", handleUploadDragEnter);
+          element.addEventListener("dragover", handleUploadDragOver);
+          element.addEventListener("dragleave", handleUploadDragLeave);
+          element.addEventListener("drop", handleUploadDrop);
+        });
 
       document.getElementById("auth-form")?.addEventListener("submit", submitAuth);
       document.getElementById("logout-button")?.addEventListener("click", handleLogout);
@@ -1098,9 +2157,28 @@ export function renderBrowserScript(config: BrowserScriptConfig): string {
         .getElementById("asset-filter-form")
         ?.addEventListener("submit", handleAssetFilterSubmit);
       document
+        .getElementById("jobs-filter-form")
+        ?.addEventListener("submit", handleJobFilterSubmit);
+      document
+        .getElementById("jobs-refresh-button")
+        ?.addEventListener("click", handleJobsRefresh);
+      document
         .getElementById("asset-create-form")
         ?.addEventListener("submit", handleAssetCreate);
+      document
+        .getElementById("asset-upload-form")
+        ?.addEventListener("submit", handleAssetUpload);
+      document
+        .getElementById("asset-upload-input")
+        ?.addEventListener("change", handleUploadInputChange);
+      document
+        .getElementById("asset-upload-kind")
+        ?.addEventListener("change", handleUploadKindChange);
     }
+
+    window.addEventListener("beforeunload", () => {
+      disconnectRealtime("idle");
+    });
 
     render();
     void restoreSession();

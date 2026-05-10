@@ -19,13 +19,18 @@
     "docker:config": "docker compose config",
     "docker:up": "docker compose up --build",
     "docker:up:detached": "docker compose up -d --build",
+    "docker:prod:config": "docker compose -f docker-compose.production.yml config",
+    "docker:prod:up": "docker compose -f docker-compose.production.yml up -d --build",
     "docker:down": "docker compose down --remove-orphans",
     "docker:logs": "docker compose logs -f",
     "db:generate": "pnpm --filter @tip/api prisma:generate",
     "db:migrate:deploy": "pnpm --filter @tip/api prisma:migrate:deploy",
     "db:seed": "pnpm --filter @tip/api prisma:seed",
     "smoke:auth": "node scripts/smoke-auth.mjs",
-    "smoke:workspace": "node scripts/smoke-workspace.mjs"
+    "smoke:workspace": "node scripts/smoke-workspace.mjs",
+    "smoke": "pnpm smoke:auth && pnpm smoke:workspace",
+    "release:check": "bash scripts/release-check.sh",
+    "deploy:production": "bash scripts/deploy-production.sh"
   },
   "devDependencies": {
     "@eslint/js": "^9.27.0",
@@ -36,6 +41,7 @@
     "tsx": "^4.19.4",
     "turbo": "^2.5.3",
     "typescript": "^5.8.3",
-    "typescript-eslint": "^8.31.0"
+    "typescript-eslint": "^8.31.0",
+    "ws": "^8.18.3"
   }
 }

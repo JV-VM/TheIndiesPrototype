@@ -3,5 +3,5 @@ export const realtimeFeature = {
   label: "Realtime",
   responsibility:
     "Synchronizes UI state with backend events and socket lifecycle changes.",
-  nextPhase: "Authenticated WebSocket session management"
+  nextPhase: "Operational observability and recovery workflows"
 } as const;

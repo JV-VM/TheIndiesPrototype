@@ -1,0 +1,177 @@
+name: theindiesprototype-production
+
+services:
+  tip-proxy:
+    image: nginx:1.27-alpine
+    depends_on:
+      tip-web:
+        condition: service_healthy
+      tip-api:
+        condition: service_healthy
+    ports:
+      - "${TIP_PUBLIC_HTTP_PORT:-80}:80"
+    volumes:
+      - ./infrastructure/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+    restart: unless-stopped
+
+  tip-web:
+    build:
+      context: .
+      dockerfile: infrastructure/docker/web.prod.Dockerfile
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      TIP_API_BASE_URL: ${TIP_API_PUBLIC_ORIGIN:-http://localhost/api}
+      TIP_API_INTERNAL_URL: http://tip-api:3001
+      TIP_WS_BASE_URL: ${TIP_API_PUBLIC_WS_ORIGIN:-ws://localhost/api}
+    depends_on:
+      tip-api:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          node -e "fetch('http://127.0.0.1:3000/ready').then((response) => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))"
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    restart: unless-stopped
+
+  tip-api:
+    build:
+      context: .
+      dockerfile: infrastructure/docker/api.prod.Dockerfile
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      DATABASE_URL: postgresql://${TIP_POSTGRES_USER:-tip}:${TIP_POSTGRES_PASSWORD:-tip}@tip-postgres:5432/${TIP_POSTGRES_DB:-tip}
+      REDIS_URL: redis://tip-redis:6379
+      MINIO_ENDPOINT: http://tip-minio:9000
+      MINIO_REGION: ${TIP_MINIO_REGION:-us-east-1}
+      MINIO_BUCKET: ${TIP_MINIO_BUCKET:-tip-assets}
+      MINIO_ACCESS_KEY: ${TIP_MINIO_ACCESS_KEY:-tipminio}
+      MINIO_SECRET_KEY: ${TIP_MINIO_SECRET_KEY:-tipminiosecret}
+      TIP_WEB_ORIGIN: ${TIP_WEB_PUBLIC_ORIGIN:-http://localhost}
+      UPLOAD_MAX_BYTES: ${UPLOAD_MAX_BYTES:-26214400}
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-tip-access-secret}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-tip-refresh-secret}
+      JWT_ACCESS_TTL_SECONDS: ${JWT_ACCESS_TTL_SECONDS:-900}
+      JWT_REFRESH_TTL_SECONDS: ${JWT_REFRESH_TTL_SECONDS:-604800}
+    depends_on:
+      tip-postgres:
+        condition: service_healthy
+      tip-redis:
+        condition: service_healthy
+      tip-minio-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          node -e "fetch('http://127.0.0.1:3001/ready').then((response) => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))"
+      interval: 15s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
+    restart: unless-stopped
+
+  tip-worker:
+    build:
+      context: .
+      dockerfile: infrastructure/docker/worker.prod.Dockerfile
+    environment:
+      NODE_ENV: production
+      REDIS_URL: redis://tip-redis:6379
+      DATABASE_URL: postgresql://${TIP_POSTGRES_USER:-tip}:${TIP_POSTGRES_PASSWORD:-tip}@tip-postgres:5432/${TIP_POSTGRES_DB:-tip}
+      MINIO_ENDPOINT: http://tip-minio:9000
+      MINIO_REGION: ${TIP_MINIO_REGION:-us-east-1}
+      MINIO_BUCKET: ${TIP_MINIO_BUCKET:-tip-assets}
+      MINIO_ACCESS_KEY: ${TIP_MINIO_ACCESS_KEY:-tipminio}
+      MINIO_SECRET_KEY: ${TIP_MINIO_SECRET_KEY:-tipminiosecret}
+      WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-2}
+      WORKER_HEALTH_PORT: ${WORKER_HEALTH_PORT:-3002}
+    depends_on:
+      tip-postgres:
+        condition: service_healthy
+      tip-redis:
+        condition: service_healthy
+      tip-minio-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          node -e "fetch('http://127.0.0.1:${WORKER_HEALTH_PORT:-3002}/ready').then((response) => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))"
+      interval: 15s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
+    restart: unless-stopped
+
+  tip-postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${TIP_POSTGRES_DB:-tip}
+      POSTGRES_USER: ${TIP_POSTGRES_USER:-tip}
+      POSTGRES_PASSWORD: ${TIP_POSTGRES_PASSWORD:-tip}
+    ports:
+      - "${TIP_POSTGRES_PORT:-15432}:5432"
+    volumes:
+      - tip-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U ${TIP_POSTGRES_USER:-tip} -d ${TIP_POSTGRES_DB:-tip}
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  tip-redis:
+    image: redis:7-alpine
+    ports:
+      - "${TIP_REDIS_PORT:-16379}:6379"
+    healthcheck:
+      test:
+        - CMD
+        - redis-cli
+        - ping
+      interval: 10s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  tip-minio:
+    image: quay.io/minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${TIP_MINIO_ACCESS_KEY:-tipminio}
+      MINIO_ROOT_PASSWORD: ${TIP_MINIO_SECRET_KEY:-tipminiosecret}
+    ports:
+      - "127.0.0.1:${TIP_MINIO_CONSOLE_PORT:-19001}:9001"
+    volumes:
+      - tip-minio-data:/data
+    restart: unless-stopped
+
+  tip-minio-init:
+    image: quay.io/minio/mc:latest
+    depends_on:
+      - tip-minio
+    environment:
+      TIP_MINIO_ACCESS_KEY: ${TIP_MINIO_ACCESS_KEY:-tipminio}
+      TIP_MINIO_SECRET_KEY: ${TIP_MINIO_SECRET_KEY:-tipminiosecret}
+      TIP_MINIO_BUCKET: ${TIP_MINIO_BUCKET:-tip-assets}
+    entrypoint:
+      - /bin/sh
+      - -c
+      - >
+        until mc alias set local http://tip-minio:9000 "$$TIP_MINIO_ACCESS_KEY" "$$TIP_MINIO_SECRET_KEY";
+        do
+          sleep 1;
+        done;
+        mc mb --ignore-existing local/"$$TIP_MINIO_BUCKET";
+
+volumes:
+  tip-postgres-data:
+  tip-minio-data:

@@ -9,6 +9,7 @@ services:
     environment:
       PORT: 3000
       TIP_API_BASE_URL: ${TIP_API_PUBLIC_ORIGIN:-http://localhost:13001}
+      TIP_API_INTERNAL_URL: http://tip-api:3001
       TIP_WS_BASE_URL: ${TIP_API_PUBLIC_WS_ORIGIN:-ws://localhost:13001}
     depends_on:
       tip-api:
@@ -19,7 +20,7 @@ services:
       test:
         - CMD-SHELL
         - >-
-          node -e "fetch('http://127.0.0.1:3000').then((response) => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))"
+          node -e "fetch('http://127.0.0.1:3000/ready').then((response) => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))"
       interval: 10s
       timeout: 5s
       retries: 5
@@ -40,6 +41,7 @@ services:
       MINIO_ACCESS_KEY: ${TIP_MINIO_ACCESS_KEY:-tipminio}
       MINIO_SECRET_KEY: ${TIP_MINIO_SECRET_KEY:-tipminiosecret}
       TIP_WEB_ORIGIN: ${TIP_WEB_PUBLIC_ORIGIN:-http://localhost:13000}
+      UPLOAD_MAX_BYTES: ${UPLOAD_MAX_BYTES:-26214400}
       JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-tip-access-secret}
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-tip-refresh-secret}
     depends_on:
@@ -75,6 +77,7 @@ services:
       MINIO_ACCESS_KEY: ${TIP_MINIO_ACCESS_KEY:-tipminio}
       MINIO_SECRET_KEY: ${TIP_MINIO_SECRET_KEY:-tipminiosecret}
       WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-2}
+      WORKER_HEALTH_PORT: ${WORKER_HEALTH_PORT:-3002}
     depends_on:
       tip-postgres:
         condition: service_healthy
@@ -82,6 +85,17 @@ services:
         condition: service_healthy
       tip-minio-init:
         condition: service_completed_successfully
+    ports:
+      - "${TIP_WORKER_HEALTH_PORT:-13002}:${WORKER_HEALTH_PORT:-3002}"
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          node -e "fetch('http://127.0.0.1:${WORKER_HEALTH_PORT:-3002}/ready').then((response) => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))"
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 15s
 
   tip-postgres:
     image: postgres:16-alpine

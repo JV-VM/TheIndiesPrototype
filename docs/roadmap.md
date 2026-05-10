@@ -17,6 +17,11 @@ Current progress as of 2026-05-10:
 - Phase 2 completed
 - Phase 3 completed
 - Phase 4 completed
+- Phase 5 completed
+- Phase 6 completed
+- Phase 7 completed
+- Phase 8 completed
+- Phase 9 completed
 
 ## Prototype Finish Line
 
@@ -27,7 +32,7 @@ The prototype is considered complete when all of the following are true:
 - live job status updates are visible in the frontend without manual refresh
 - the system has baseline observability: health checks, structured logs, and failure visibility
 - the repository contains clear setup, architecture, operations, and deployment documentation
-- production-oriented container images and deployment instructions exist for a real host environment
+- production-oriented container images, deployment instructions, and a release checklist exist for a real host environment
 
 ## Architectural Constraints
 
@@ -77,16 +82,17 @@ Shared packages should be intentionally thin and dependency-safe:
 
 ## Phase Sequence
 
-The roadmap is organized by complexity scope:
+The roadmap is organized by phase:
 
-1. decoupled base and repo foundation
-2. persistent domain and application shell
-3. secure product workflow
-4. storage and upload boundaries
-5. distributed job execution
-6. real-time synchronization
-7. operational hardening
-8. documentation and deployment readiness
+1. monorepo foundation and architecture baseline
+2. local infrastructure and persistence foundation
+3. authentication and application shell
+4. projects and asset domain workflow
+5. upload pipeline and object storage integration
+6. distributed processing and worker execution
+7. real-time updates and frontend synchronization
+8. operational hardening and quality gates
+9. documentation, production images, and deployment
 
 ## Phase 1 - Monorepo Foundation and Architecture Baseline
 

@@ -357,6 +357,72 @@ const styles = `
     grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);
   }
 
+  .upload-dropzone {
+    padding: 18px;
+    border-radius: 22px;
+    border: 1px dashed rgba(34, 21, 12, 0.2);
+    background: rgba(255, 250, 243, 0.76);
+    transition:
+      border-color 160ms ease,
+      background-color 160ms ease,
+      transform 160ms ease;
+  }
+
+  .upload-dropzone[data-drag="true"] {
+    border-color: var(--accent);
+    background: rgba(201, 94, 55, 0.1);
+    transform: translateY(-1px);
+  }
+
+  .upload-picker {
+    display: inline-flex;
+    width: fit-content;
+    cursor: pointer;
+    color: var(--accent-deep);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+
+  .upload-meta {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-top: 12px;
+  }
+
+  .upload-progress {
+    display: grid;
+    gap: 10px;
+  }
+
+  .upload-progress-bar {
+    width: 100%;
+    height: 10px;
+    overflow: hidden;
+    border-radius: 999px;
+    background: rgba(34, 21, 12, 0.08);
+  }
+
+  .upload-progress-bar span {
+    display: block;
+    height: 100%;
+    border-radius: inherit;
+    background: linear-gradient(135deg, var(--accent) 0%, var(--accent-deep) 100%);
+    transition: width 120ms linear;
+  }
+
+  .visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
   .workspace-pane,
   .status-strip,
   .content-card,
@@ -542,7 +608,7 @@ export function renderPage(config: WebAppConfig): string {
     <head>
       <meta charset="utf-8" />
       <meta name="viewport" content="width=device-width, initial-scale=1" />
-      <title>TheIndiesPrototype Workspace Shell</title>
+      <title>TheIndiesPrototype Processing Workspace</title>
       <style>${styles}</style>
     </head>
     <body>

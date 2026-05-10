@@ -87,6 +87,15 @@ export const createAssetSchema = z.object({
   metadata: metadataSchema.optional().nullable()
 });
 
+export const uploadProjectAssetQuerySchema = z.object({
+  kind: assetKindSchema,
+  filename: z
+    .string()
+    .trim()
+    .min(1, "Filename is required.")
+    .max(255, "Filename must be at most 255 characters long.")
+});
+
 export const updateAssetSchema = z
   .object({
     kind: assetKindSchema.optional(),
@@ -117,4 +126,7 @@ export type ListProjectAssetsQuery = z.infer<
   typeof listProjectAssetsQuerySchema
 >;
 export type CreateAssetPayload = z.infer<typeof createAssetSchema>;
+export type UploadProjectAssetQuery = z.infer<
+  typeof uploadProjectAssetQuerySchema
+>;
 export type UpdateAssetPayload = z.infer<typeof updateAssetSchema>;

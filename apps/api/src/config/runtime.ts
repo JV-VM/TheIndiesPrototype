@@ -11,6 +11,7 @@ export interface RuntimeConfig {
   minioBucket: string;
   minioAccessKey: string;
   minioSecretKey: string;
+  uploadMaxBytes: number;
   jwtAccessSecret: string;
   jwtRefreshSecret: string;
   accessTokenTtlSeconds: number;
@@ -76,6 +77,7 @@ export function readRuntimeConfig(): RuntimeConfig {
     minioBucket: readString("MINIO_BUCKET", "tip-assets"),
     minioAccessKey: readString("MINIO_ACCESS_KEY", "tipminio"),
     minioSecretKey: readString("MINIO_SECRET_KEY", "tipminiosecret"),
+    uploadMaxBytes: readNumber("UPLOAD_MAX_BYTES", 25 * 1024 * 1024),
     jwtAccessSecret: readString("JWT_ACCESS_SECRET", "tip-access-secret"),
     jwtRefreshSecret: readString("JWT_REFRESH_SECRET", "tip-refresh-secret"),
     accessTokenTtlSeconds: readNumber("JWT_ACCESS_TTL_SECONDS", 15 * 60),
