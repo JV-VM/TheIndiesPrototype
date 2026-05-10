@@ -1,0 +1,10 @@
+dist
+node_modules
+.turbo
+.env
+.env.local
+.env.*.local
+coverage
+*.log
+apps/*/.angular
+apps/*/.cache
