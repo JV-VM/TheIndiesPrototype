@@ -1,4 +1,4 @@
-# TheIndiesPrototype
+# The Indies Prototype
 
 TheIndiesPrototype (TIP) is a distributed prototype platform for creator-focused asset workflows. The repository is organized as a monorepo with two modular monolith applications and one decoupled worker service:
 
