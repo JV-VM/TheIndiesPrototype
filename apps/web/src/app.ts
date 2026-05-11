@@ -429,6 +429,7 @@ const styles = `
   .feature-card,
   .asset-row {
     padding: 18px;
+    min-width: 0;
   }
 
   .project-stack,
@@ -482,12 +483,42 @@ const styles = `
     display: grid;
     gap: 18px;
     align-content: start;
+    min-width: 0;
   }
 
   .shell-main {
     padding: 22px;
     display: grid;
     gap: 18px;
+    min-width: 0;
+  }
+
+  .shell > *,
+  .workspace-grid > *,
+  .field-grid > *,
+  .project-card-head > *,
+  .asset-row-head > *,
+  .list-header > *,
+  .shell-header > * {
+    min-width: 0;
+  }
+
+  #shell-status-grid-slot,
+  #shell-realtime-slot,
+  #shell-active-section-slot,
+  #shell-message-slot {
+    overflow-anchor: none;
+  }
+
+  #projects-left-slot,
+  #projects-right-slot,
+  #jobs-left-slot,
+  #jobs-right-slot {
+    overflow-anchor: none;
+  }
+
+  #shell-message-slot {
+    min-height: 24px;
   }
 
   .shell-nav {
@@ -563,11 +594,27 @@ const styles = `
     border: 1px solid var(--line);
     font-size: 13px;
     color: var(--muted);
+    white-space: normal;
+    overflow-wrap: anywhere;
+    word-break: break-word;
   }
 
   .code-pill {
     font-family: "Courier New", monospace;
     font-size: 12px;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+
+  .muted-note,
+  .message,
+  .empty-state p,
+  .workspace-pane p,
+  .asset-row p,
+  .project-card p {
+    overflow-wrap: anywhere;
+    word-break: break-word;
   }
 
   .empty-state {

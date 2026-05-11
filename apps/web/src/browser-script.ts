@@ -1,3 +1,6 @@
+import { shellViewModuleSource } from "./browser/views/shell.js";
+import { workspaceViewModuleSource } from "./browser/views/workspace.js";
+
 interface WebAppConfig {
   apiBaseUrl: string;
   wsBaseUrl: string;
@@ -81,6 +84,8 @@ export function renderBrowserScript(config: BrowserScriptConfig): string {
     };
 
     const appElement = document.getElementById("app");
+    let renderedMarkup = "";
+    let renderFrameId = null;
 
     function escapeHtml(value) {
       return String(value)
@@ -89,6 +94,29 @@ export function renderBrowserScript(config: BrowserScriptConfig): string {
         .replaceAll(">", "&gt;")
         .replaceAll('"', "&quot;")
         .replaceAll("'", "&#39;");
+    }
+
+    function findClosestTarget(event, selector) {
+      return event.target instanceof Element ? event.target.closest(selector) : null;
+    }
+
+    function readViewportSnapshot() {
+      return {
+        scrollX: window.scrollX,
+        scrollY: window.scrollY
+      };
+    }
+
+    function restoreViewportSnapshot(snapshot) {
+      const maxScrollY = Math.max(
+        0,
+        document.documentElement.scrollHeight - window.innerHeight
+      );
+
+      window.scrollTo({
+        left: snapshot.scrollX,
+        top: Math.min(snapshot.scrollY, maxScrollY)
+      });
     }
 
     function setMessage(message, tone = "neutral") {
@@ -327,9 +355,7 @@ export function renderBrowserScript(config: BrowserScriptConfig): string {
 
         void loadProjects({
           focusProjectId: state.selectedProjectId,
-          suppressRender: true
-        }).finally(() => {
-          render();
+          background: true
         });
       }, state.realtimeFallbackPollIntervalMs);
     }
@@ -369,9 +395,7 @@ export function renderBrowserScript(config: BrowserScriptConfig): string {
 
         void loadProjects({
           focusProjectId: state.selectedProjectId,
-          suppressRender: true
-        }).finally(() => {
-          render();
+          background: true
         });
       }, 240);
     }
@@ -682,11 +706,11 @@ export function renderBrowserScript(config: BrowserScriptConfig): string {
         return;
       }
 
-      state.assetsBusy = true;
-      state.jobsBusy = true;
+      const background = options.background === true;
 
-      if (!options.suppressRender) {
-        render();
+      if (!background) {
+        state.assetsBusy = true;
+        state.jobsBusy = true;
       }
 
       try {
@@ -714,8 +738,10 @@ export function renderBrowserScript(config: BrowserScriptConfig): string {
       } catch (error) {
         setMessage(errorMessage(error, "Could not load project details."), "danger");
       } finally {
-        state.assetsBusy = false;
-        state.jobsBusy = false;
+        if (!background) {
+          state.assetsBusy = false;
+          state.jobsBusy = false;
+        }
 
         if (!options.suppressRender) {
           render();
@@ -730,10 +756,10 @@ export function renderBrowserScript(config: BrowserScriptConfig): string {
         return;
       }
 
-      state.projectsBusy = true;
+      const background = options.background === true;
 
-      if (!options.suppressRender) {
-        render();
+      if (!background) {
+        state.projectsBusy = true;
       }
 
       try {
@@ -754,7 +780,10 @@ export function renderBrowserScript(config: BrowserScriptConfig): string {
         syncRealtimeProjectSubscription();
 
         if (state.selectedProjectId) {
-          await loadSelectedProject({ suppressRender: true });
+          await loadSelectedProject({
+            suppressRender: true,
+            background
+          });
         } else {
           state.selectedProject = null;
           state.assets = null;
@@ -764,7 +793,9 @@ export function renderBrowserScript(config: BrowserScriptConfig): string {
       } catch (error) {
         setMessage(errorMessage(error, "Could not load projects."), "danger");
       } finally {
-        state.projectsBusy = false;
+        if (!background) {
+          state.projectsBusy = false;
+        }
 
         if (!options.suppressRender) {
           render();
@@ -810,7 +841,13 @@ export function renderBrowserScript(config: BrowserScriptConfig): string {
         return;
       }
 
-      const formData = new FormData(event.currentTarget);
+      const form = findClosestTarget(event, "#auth-form");
+
+      if (!(form instanceof HTMLFormElement)) {
+        return;
+      }
+
+      const formData = new FormData(form);
       const payload = {
         email: String(formData.get("email") ?? ""),
         password: String(formData.get("password") ?? "")
@@ -855,15 +892,27 @@ export function renderBrowserScript(config: BrowserScriptConfig): string {
 
     async function handleProjectsFilterSubmit(event) {
       event.preventDefault();
-      const formData = new FormData(event.currentTarget);
+      const form = findClosestTarget(event, "#projects-filter-form");
+
+      if (!(form instanceof HTMLFormElement)) {
+        return;
+      }
+
+      const formData = new FormData(form);
       state.projectsQuery = String(formData.get("query") ?? "").trim();
       state.projectsPage = 1;
-      await loadProjects();
+      await loadProjects({ background: true });
     }
 
     async function handleProjectCreate(event) {
       event.preventDefault();
-      const form = event.currentTarget;
+
+      const form = findClosestTarget(event, "#project-create-form");
+
+      if (!(form instanceof HTMLFormElement)) {
+        return;
+      }
+
       const formData = new FormData(form);
 
       try {
@@ -892,7 +941,13 @@ export function renderBrowserScript(config: BrowserScriptConfig): string {
         return;
       }
 
-      const formData = new FormData(event.currentTarget);
+      const form = findClosestTarget(event, "#project-edit-form");
+
+      if (!(form instanceof HTMLFormElement)) {
+        return;
+      }
+
+      const formData = new FormData(form);
 
       try {
         const project = await withAuthenticatedClient(() =>
@@ -931,7 +986,13 @@ export function renderBrowserScript(config: BrowserScriptConfig): string {
     }
 
     async function handleProjectSelection(event) {
-      const projectId = event.currentTarget.dataset.projectId;
+      const projectElement = findClosestTarget(event, "[data-project-id]");
+
+      if (!(projectElement instanceof HTMLElement)) {
+        return;
+      }
+
+      const projectId = projectElement.dataset.projectId;
 
       if (!projectId || projectId === state.selectedProjectId) {
         return;
@@ -943,29 +1004,42 @@ export function renderBrowserScript(config: BrowserScriptConfig): string {
       state.activeSection = "projects";
       clearPendingUpload();
       syncRealtimeProjectSubscription();
-      await loadSelectedProject();
+      render();
+      await loadSelectedProject({ background: true });
     }
 
     async function handleAssetFilterSubmit(event) {
       event.preventDefault();
-      const formData = new FormData(event.currentTarget);
+      const form = findClosestTarget(event, "#asset-filter-form");
+
+      if (!(form instanceof HTMLFormElement)) {
+        return;
+      }
+
+      const formData = new FormData(form);
       state.assetQuery = String(formData.get("query") ?? "").trim();
       state.assetStatus = String(formData.get("status") ?? "all");
       state.assetKind = String(formData.get("kind") ?? "all");
       state.assetPage = 1;
-      await loadSelectedProject();
+      await loadSelectedProject({ background: true });
     }
 
     async function handleJobFilterSubmit(event) {
       event.preventDefault();
-      const formData = new FormData(event.currentTarget);
+      const form = findClosestTarget(event, "#jobs-filter-form");
+
+      if (!(form instanceof HTMLFormElement)) {
+        return;
+      }
+
+      const formData = new FormData(form);
       state.jobsStatus = String(formData.get("status") ?? "all");
       state.jobsPage = 1;
-      await loadSelectedProject();
+      await loadSelectedProject({ background: true });
     }
 
     async function handleJobsRefresh() {
-      await loadSelectedProject();
+      await loadSelectedProject({ background: true });
     }
 
     async function handleAssetCreate(event) {
@@ -975,7 +1049,12 @@ export function renderBrowserScript(config: BrowserScriptConfig): string {
         return;
       }
 
-      const form = event.currentTarget;
+      const form = findClosestTarget(event, "#asset-create-form");
+
+      if (!(form instanceof HTMLFormElement)) {
+        return;
+      }
+
       const formData = new FormData(form);
 
       try {
@@ -999,7 +1078,13 @@ export function renderBrowserScript(config: BrowserScriptConfig): string {
     }
 
     function handleUploadInputChange(event) {
-      const file = event.currentTarget.files?.[0];
+      const input = findClosestTarget(event, "#asset-upload-input");
+
+      if (!(input instanceof HTMLInputElement)) {
+        return;
+      }
+
+      const file = input.files?.[0];
 
       if (!file) {
         return;
@@ -1011,7 +1096,13 @@ export function renderBrowserScript(config: BrowserScriptConfig): string {
     }
 
     function handleUploadKindChange(event) {
-      state.uploadKind = event.currentTarget.value;
+      const select = findClosestTarget(event, "#asset-upload-kind");
+
+      if (!(select instanceof HTMLSelectElement)) {
+        return;
+      }
+
+      state.uploadKind = select.value;
       render();
     }
 
@@ -1032,9 +1123,14 @@ export function renderBrowserScript(config: BrowserScriptConfig): string {
 
     function handleUploadDragLeave(event) {
       event.preventDefault();
+      const dropzone = findClosestTarget(event, "[data-upload-dropzone]");
       const nextTarget = event.relatedTarget;
 
-      if (nextTarget instanceof Node && event.currentTarget.contains(nextTarget)) {
+      if (
+        dropzone instanceof HTMLElement &&
+        nextTarget instanceof Node &&
+        dropzone.contains(nextTarget)
+      ) {
         return;
       }
 
@@ -1109,8 +1205,14 @@ export function renderBrowserScript(config: BrowserScriptConfig): string {
         return;
       }
 
-      const assetId = event.currentTarget.dataset.assetId;
-      const formData = new FormData(event.currentTarget);
+      const form = findClosestTarget(event, "[data-asset-status-form]");
+
+      if (!(form instanceof HTMLFormElement)) {
+        return;
+      }
+
+      const assetId = form.dataset.assetId;
+      const formData = new FormData(form);
 
       if (!assetId) {
         return;
@@ -1140,8 +1242,14 @@ export function renderBrowserScript(config: BrowserScriptConfig): string {
         return;
       }
 
-      const assetId = event.currentTarget.dataset.assetId;
-      const fallbackFilename = event.currentTarget.dataset.filename;
+      const button = findClosestTarget(event, "[data-asset-download]");
+
+      if (!(button instanceof HTMLElement)) {
+        return;
+      }
+
+      const assetId = button.dataset.assetId;
+      const fallbackFilename = button.dataset.filename;
 
       if (!assetId) {
         return;
@@ -1175,7 +1283,13 @@ export function renderBrowserScript(config: BrowserScriptConfig): string {
         return;
       }
 
-      const assetId = event.currentTarget.dataset.assetId;
+      const button = findClosestTarget(event, "[data-asset-process]");
+
+      if (!(button instanceof HTMLElement)) {
+        return;
+      }
+
+      const assetId = button.dataset.assetId;
 
       if (!assetId) {
         return;
@@ -1208,7 +1322,13 @@ export function renderBrowserScript(config: BrowserScriptConfig): string {
         return;
       }
 
-      const jobId = event.currentTarget.dataset.jobId;
+      const button = findClosestTarget(event, "[data-job-retry]");
+
+      if (!(button instanceof HTMLElement)) {
+        return;
+      }
+
+      const jobId = button.dataset.jobId;
 
       if (!jobId) {
         return;
@@ -1235,8 +1355,14 @@ export function renderBrowserScript(config: BrowserScriptConfig): string {
         return;
       }
 
-      const jobId = event.currentTarget.dataset.jobId;
-      const fallbackFilename = event.currentTarget.dataset.filename;
+      const button = findClosestTarget(event, "[data-job-thumbnail]");
+
+      if (!(button instanceof HTMLElement)) {
+        return;
+      }
+
+      const jobId = button.dataset.jobId;
+      const fallbackFilename = button.dataset.filename;
 
       if (!jobId) {
         return;
@@ -1269,8 +1395,14 @@ export function renderBrowserScript(config: BrowserScriptConfig): string {
     }
 
     async function handlePaginationClick(event) {
-      const target = event.currentTarget.dataset.paginationTarget;
-      const direction = event.currentTarget.dataset.direction;
+      const button = findClosestTarget(event, "[data-pagination-target]");
+
+      if (!(button instanceof HTMLElement)) {
+        return;
+      }
+
+      const target = button.dataset.paginationTarget;
+      const direction = button.dataset.direction;
 
       if (!target || !direction) {
         return;
@@ -1285,7 +1417,7 @@ export function renderBrowserScript(config: BrowserScriptConfig): string {
         }
 
         state.projectsPage = nextPage;
-        await loadProjects();
+        await loadProjects({ background: true });
         return;
       }
 
@@ -1298,7 +1430,7 @@ export function renderBrowserScript(config: BrowserScriptConfig): string {
         }
 
         state.assetPage = nextPage;
-        await loadSelectedProject();
+        await loadSelectedProject({ background: true });
         return;
       }
 
@@ -1311,876 +1443,180 @@ export function renderBrowserScript(config: BrowserScriptConfig): string {
         }
 
         state.jobsPage = nextPage;
-        await loadSelectedProject();
+        await loadSelectedProject({ background: true });
       }
     }
 
-    function renderInfrastructure() {
-      if (!state.infrastructure) {
-        return '<p class="muted-note">Infrastructure status is unavailable from the browser right now.</p>';
+${workspaceViewModuleSource}
+
+${shellViewModuleSource}
+
+    function handleDelegatedClick(event) {
+      const authModeElement = findClosestTarget(event, "[data-auth-mode]");
+
+      if (authModeElement instanceof HTMLElement) {
+        state.authMode = authModeElement.dataset.authMode;
+        setMessage(
+          state.authMode === "signup"
+            ? "Create an account and the workspace shell will open immediately."
+            : "Sign in with an existing account.",
+          "neutral"
+        );
+        render();
+        return;
       }
 
-      return \`<div class="chip-cluster">\${state.infrastructure.dependencies
-        .map(
-          (dependency) => \`
-            <span class="dependency-chip" data-status="\${dependency.status}">
-              <strong>\${escapeHtml(dependency.name)}</strong>
-              <span>\${dependency.latencyMs}ms</span>
-            </span>
-          \`
-        )
-        .join("")}</div>\`;
-    }
+      const sectionElement = findClosestTarget(event, "[data-section]");
 
-    function renderLifecycleChips(counts) {
-      return \`<div class="chip-cluster">\${assetLifecycleStatuses
-        .map(
-          (status) => \`
-            <span class="summary-chip" data-status="\${status}">
-              <strong>\${status}</strong>
-              <span>\${counts[status] ?? 0}</span>
-            </span>
-          \`
-        )
-        .join("")}</div>\`;
-    }
-
-    function renderProjectsList() {
-      if (!state.projects || state.projects.items.length === 0) {
-        return \`
-          <div class="empty-state">
-            <strong>No projects yet</strong>
-            <p>Create the first workspace entry for this account and uploads, jobs, and derived outputs will attach to it immediately.</p>
-          </div>
-        \`;
+      if (sectionElement instanceof HTMLElement) {
+        state.activeSection = sectionElement.dataset.section;
+        render();
+        return;
       }
 
-      return \`<div class="project-stack">\${state.projects.items
-        .map(
-          (project) => \`
-            <button class="project-card" type="button" data-project-id="\${project.id}" data-active="\${project.id === state.selectedProjectId}">
-              <div class="project-card-head">
-                <div>
-                  <strong>\${escapeHtml(project.name)}</strong>
-                  <p>\${escapeHtml(project.description ?? "No description yet.")}</p>
-                </div>
-                <span class="code-pill">\${project.assetCount} assets</span>
-              </div>
-              \${renderLifecycleChips(project.assetStatusCounts)}
-              <p class="muted-note">Updated \${escapeHtml(formatDate(project.updatedAt))}</p>
-            </button>
-          \`
-        )
-        .join("")}</div>\`;
-    }
-
-    function renderAssetList() {
-      if (!state.selectedProject) {
-        return \`
-          <div class="empty-state">
-            <strong>Select a project</strong>
-            <p>Project details and asset inventory appear here once a workspace entry is active.</p>
-          </div>
-        \`;
+      if (findClosestTarget(event, "#logout-button")) {
+        void handleLogout();
+        return;
       }
 
-      if (!state.assets || state.assets.items.length === 0) {
-        return \`
-          <div class="empty-state">
-            <strong>No asset records yet</strong>
-            <p>This project is ready for source uploads or manual draft metadata. Add the first asset below to start the lifecycle history.</p>
-          </div>
-        \`;
+      if (findClosestTarget(event, "#project-delete-button")) {
+        void handleProjectDelete();
+        return;
       }
 
-      return \`<div class="asset-list">\${state.assets.items
-        .map(
-          (asset) => \`
-            <article class="asset-row">
-              <div class="asset-row-head">
-                <div>
-                  <strong>\${escapeHtml(asset.originalFilename)}</strong>
-                  <p>\${escapeHtml(asset.contentType)} • \${escapeHtml(asset.kind)} • \${escapeHtml(formatBytes(asset.byteSize))}</p>
-                </div>
-                <span class="summary-chip" data-status="\${asset.status}">
-                  <strong>\${asset.status}</strong>
-                  <span>\${escapeHtml(formatDate(asset.updatedAt))}</span>
-                </span>
-              </div>
-              <p class="muted-note">
-                \${asset.objectKey
-                  ? \`Stored source object: <span class="code-pill">\${escapeHtml(asset.objectKey)}</span>\`
-                  : "No source object stored yet. This record is still metadata-only."}
-              </p>
-              <form data-asset-status-form="true" data-asset-id="\${asset.id}">
-                <div class="field-grid">
-                  <label>
-                    Lifecycle Status
-                    <select name="status">
-                      \${assetLifecycleStatuses
-                        .map(
-                          (status) => \`
-                            <option value="\${status}" \${asset.status === status ? "selected" : ""}>\${status}</option>
-                          \`
-                        )
-                        .join("")}
-                    </select>
-                  </label>
-                </div>
-                <div class="inline-actions">
-                  <button class="ghost-button" type="submit">Apply Status</button>
-                  \${asset.objectKey && asset.kind === "image"
-                    ? \`<button class="ghost-button" type="button" data-asset-process="true" data-asset-id="\${asset.id}" \${asset.status === "queued" || asset.status === "processing" ? "disabled" : ""}>Queue Thumbnail Job</button>\`
-                    : ""}
-                  \${asset.objectKey
-                    ? \`<button class="ghost-button" type="button" data-asset-download="true" data-asset-id="\${asset.id}" data-filename="\${escapeHtml(asset.originalFilename)}">Download Source</button>\`
-                    : ""}
-                </div>
-              </form>
-            </article>
-          \`
-        )
-        .join("")}</div>\`;
-    }
-
-    function renderJobsList() {
-      if (!state.selectedProject) {
-        return \`
-          <div class="empty-state">
-            <strong>Select a project</strong>
-            <p>Queued and completed processing jobs will appear here once a project is active.</p>
-          </div>
-        \`;
+      if (findClosestTarget(event, "#jobs-refresh-button")) {
+        void handleJobsRefresh();
+        return;
       }
 
-      if (!state.jobs || state.jobs.items.length === 0) {
-        return \`
-          <div class="empty-state">
-            <strong>No jobs yet</strong>
-            <p>Queue a thumbnail generation job from the asset inventory to start the first worker pipeline.</p>
-          </div>
-        \`;
+      const projectElement = findClosestTarget(event, "[data-project-id]");
+
+      if (projectElement instanceof HTMLElement) {
+        void handleProjectSelection(event);
+        return;
       }
 
-      return \`<div class="asset-list">\${state.jobs.items
-        .map((job) => {
-          const thumbnail = job.result?.outputs?.[0] ?? null;
-
-          return \`
-            <article class="asset-row">
-              <div class="asset-row-head">
-                <div>
-                  <strong>\${escapeHtml(job.payload?.originalFilename ?? job.assetId)}</strong>
-                  <p>\${escapeHtml(job.kind)} • attempts \${job.attempts}/\${job.maxAttempts}</p>
-                </div>
-                <span class="summary-chip" data-status="\${job.status}">
-                  <strong>\${job.status}</strong>
-                  <span>\${escapeHtml(formatDate(job.updatedAt))}</span>
-                </span>
-              </div>
-              <p class="muted-note">
-                Queue: <span class="code-pill">\${escapeHtml(job.queueName)}</span>
-                • Job ID: <span class="code-pill">\${escapeHtml(job.id)}</span>
-              </p>
-              \${job.failureReason
-                ? \`<p class="message" data-tone="danger">\${escapeHtml(job.failureReason)}</p>\`
-                : ""}
-              \${thumbnail
-                ? \`<p class="muted-note">Thumbnail stored at <span class="code-pill">\${escapeHtml(thumbnail.objectKey)}</span></p>\`
-                : ""}
-              <div class="inline-actions">
-                \${job.status === "failed"
-                  ? \`<button class="ghost-button" type="button" data-job-retry="true" data-job-id="\${job.id}">Retry Job</button>\`
-                  : ""}
-                \${thumbnail
-                  ? \`<button class="ghost-button" type="button" data-job-thumbnail="true" data-job-id="\${job.id}" data-filename="\${escapeHtml(thumbnail.filename)}">Download Thumbnail</button>\`
-                  : ""}
-              </div>
-            </article>
-          \`;
-        })
-        .join("")}</div>\`;
-    }
-
-    function renderRealtimeNotifications() {
-      if (state.notifications.length === 0) {
-        return \`
-          <div class="empty-state">
-            <strong>No delivery notifications yet</strong>
-            <p>Realtime completion and failure notices for the selected account will collect here once jobs start moving through the worker.</p>
-          </div>
-        \`;
+      if (findClosestTarget(event, "[data-pagination-target]")) {
+        void handlePaginationClick(event);
+        return;
       }
 
-      return \`<div class="asset-list">\${state.notifications
-        .map(
-          (notification) => \`
-            <article class="asset-row">
-              <div class="asset-row-head">
-                <div>
-                  <strong>\${escapeHtml(notification.title)}</strong>
-                  <p>\${escapeHtml(notification.message)}</p>
-                </div>
-                <span class="summary-chip" data-status="\${notification.level === "danger" ? "failed" : notification.level === "success" ? "completed" : "queued"}">
-                  <strong>\${escapeHtml(notification.level)}</strong>
-                  <span>\${escapeHtml(formatDate(notification.occurredAt))}</span>
-                </span>
-              </div>
-            </article>
-          \`
-        )
-        .join("")}</div>\`;
-    }
+      if (findClosestTarget(event, "[data-asset-download]")) {
+        void handleAssetDownload(event);
+        return;
+      }
 
-    function renderRealtimePanel() {
-      const projectLabel = state.realtimeProjectId
-        ? \`Project \${state.realtimeProjectId}\`
-        : "All projects";
+      if (findClosestTarget(event, "[data-asset-process]")) {
+        void handleAssetProcess(event);
+        return;
+      }
 
-      return \`
-        <section class="content-card">
-          <div class="list-header">
-            <div>
-              <strong>Live Delivery</strong>
-              <p>Authenticated socket updates now flow from the worker through the API and reconcile the selected project without manual refresh.</p>
-            </div>
-            <span class="code-pill">\${escapeHtml(realtimeStatusLabel())}</span>
-          </div>
-          <div class="chip-cluster">
-            <span class="summary-chip" data-status="\${state.realtimeStatus === "connected" ? "completed" : state.realtimeFallbackActive ? "queued" : "draft"}">
-              <strong>Status</strong>
-              <span>\${escapeHtml(realtimeStatusValue())}</span>
-            </span>
-            <span class="summary-chip" data-status="\${state.realtimeFallbackActive ? "queued" : "uploaded"}">
-              <strong>Fallback</strong>
-              <span>\${escapeHtml(state.realtimeFallbackActive ? \`Polling \${Math.round(state.realtimeFallbackPollIntervalMs / 1000)}s\` : "Socket only")}</span>
-            </span>
-            <span class="summary-chip" data-status="uploaded">
-              <strong>Subscription</strong>
-              <span>\${escapeHtml(projectLabel)}</span>
-            </span>
-          </div>
-          <p class="muted-note">
-            Endpoint <span class="code-pill">\${escapeHtml(buildRealtimeSocketUrl())}</span>
-            • Connection <span class="code-pill">\${escapeHtml(state.realtimeConnectionId ?? "pending")}</span>
-          </p>
-          <p class="muted-note">
-            Last signal:
-            \${escapeHtml(state.realtimeLastEventLabel)}
-            \${state.realtimeLastEventAt ? \` • \${escapeHtml(formatDate(state.realtimeLastEventAt))}\` : ""}
-          </p>
-          \${renderRealtimeNotifications()}
-        </section>
-      \`;
-    }
+      if (findClosestTarget(event, "[data-job-retry]")) {
+        void handleJobRetry(event);
+        return;
+      }
 
-    function renderUploadPanel() {
-      const selectedFile = state.pendingUploadFile;
-      const progressMarkup =
-        state.uploadBusy || state.uploadProgress > 0
-          ? \`
-              <div class="upload-progress" aria-live="polite">
-                <div class="upload-progress-bar">
-                  <span style="width: \${Math.max(state.uploadProgress, 6)}%"></span>
-                </div>
-                <p class="muted-note">
-                  \${state.uploadBusy
-                    ? \`Uploading \${state.uploadProgress}%\`
-                    : "Upload ready."}
-                </p>
-              </div>
-            \`
-          : "";
-
-      return \`
-        <form id="asset-upload-form">
-          <strong>Upload Source Asset</strong>
-          <div class="upload-dropzone" data-upload-dropzone="true" data-drag="\${state.uploadDragActive}">
-            <input
-              id="asset-upload-input"
-              class="visually-hidden"
-              type="file"
-              accept=".gif,.jpeg,.jpg,.json,.md,.mov,.mp3,.mp4,.ogg,.pdf,.png,.svg,.txt,.wav,.webm,.webp"
-            />
-            <p>
-              Drop one supported file here or
-              <label class="upload-picker" for="asset-upload-input">browse from disk</label>.
-            </p>
-            <p class="muted-note">
-              Supported categories: image, audio, video, and document. Current limit: 25 MB per file.
-            </p>
-            \${selectedFile
-              ? \`
-                  <div class="upload-meta">
-                    <span class="code-pill">\${escapeHtml(selectedFile.name)}</span>
-                    <span class="code-pill">\${escapeHtml(selectedFile.type || "application/octet-stream")}</span>
-                    <span class="code-pill">\${escapeHtml(formatBytes(selectedFile.size))}</span>
-                  </div>
-                \`
-              : ""}
-          </div>
-          <div class="field-grid">
-            <label>
-              Asset Kind
-              <select id="asset-upload-kind" name="kind">
-                \${assetKinds
-                  .map(
-                    (kind) => \`
-                      <option value="\${kind}" \${state.uploadKind === kind ? "selected" : ""}>\${kind}</option>
-                    \`
-                  )
-                  .join("")}
-              </select>
-            </label>
-          </div>
-          \${progressMarkup}
-          <div class="form-actions">
-            <button class="primary-button" type="submit" \${!selectedFile || state.uploadBusy ? "disabled" : ""}>
-              \${state.uploadBusy ? "Uploading..." : selectedFile ? "Upload To Storage" : "Choose A File First"}
-            </button>
-          </div>
-        </form>
-      \`;
-    }
-
-    function renderOverviewSection() {
-      const projectTotal = state.projects?.totalItems ?? 0;
-      const selectedProjectAssets = state.selectedProject?.assetCount ?? 0;
-      const lifecycleCoverage = state.selectedProject
-        ? countLifecycleCoverage(state.selectedProject.assetStatusCounts)
-        : 0;
-
-      return \`
-        <div class="content-grid">
-          <div class="content-card">
-            <strong>Project Inventory</strong>
-            <div class="status-value">\${projectTotal}</div>
-            <p>Projects are now persisted per user and paginated through protected API routes.</p>
-          </div>
-          <div class="content-card">
-            <strong>Selected Assets</strong>
-            <div class="status-value">\${selectedProjectAssets}</div>
-            <p>Asset records now carry either metadata-only drafts or real source objects stored behind the API boundary.</p>
-          </div>
-          <div class="content-card">
-            <strong>Lifecycle Coverage</strong>
-            <div class="status-value">\${lifecycleCoverage}/\${assetLifecycleStatuses.length}</div>
-            <p>Status transitions now include upload, queued execution, processing, and terminal worker outcomes.</p>
-          </div>
-        </div>
-        <div class="content-card">
-          <strong>Selected Project Snapshot</strong>
-          <p>
-            \${state.selectedProject
-              ? escapeHtml(state.selectedProject.name) + " is currently active, with " + escapeHtml(String(state.selectedProject.assetCount)) + " tracked asset records."
-              : "No project is selected yet. Create or choose a project to inspect its asset inventory."}
-          </p>
-          \${state.selectedProject ? renderLifecycleChips(state.selectedProject.assetStatusCounts) : ""}
-        </div>
-      \`;
-    }
-
-    function renderJobsSection() {
-      return \`
-        <div class="workspace-grid">
-          <section class="workspace-pane workspace-stack">
-            <div class="list-header">
-              <div>
-                <strong>Job Queue</strong>
-                <p>Review queued, active, completed, and failed worker activity for the selected project.</p>
-              </div>
-              <span class="code-pill">\${state.jobs ? state.jobs.totalItems : 0} total</span>
-            </div>
-            <form id="jobs-filter-form">
-              <div class="field-grid">
-                <label>
-                  Status
-                  <select name="status">
-                    <option value="all" \${state.jobsStatus === "all" ? "selected" : ""}>All statuses</option>
-                    \${jobLifecycleStatuses
-                      .map(
-                        (status) => \`
-                          <option value="\${status}" \${state.jobsStatus === status ? "selected" : ""}>\${status}</option>
-                        \`
-                      )
-                      .join("")}
-                  </select>
-                </label>
-              </div>
-              <div class="form-actions">
-                <button class="ghost-button" type="submit">Apply Job Filter</button>
-                <button class="ghost-button" type="button" id="jobs-refresh-button">Refresh Jobs</button>
-              </div>
-            </form>
-            \${state.jobsBusy ? '<p class="muted-note">Refreshing job queue...</p>' : ""}
-            \${renderJobsList()}
-            <div class="pagination">
-              <button class="ghost-button" type="button" data-pagination-target="jobs" data-direction="prev" \${!state.jobs || state.jobsPage <= 1 ? "disabled" : ""}>Previous</button>
-              <span class="muted-note">Page \${state.jobsPage} of \${state.jobs?.totalPages ?? 1}</span>
-              <button class="ghost-button" type="button" data-pagination-target="jobs" data-direction="next" \${!state.jobs || state.jobsPage >= state.jobs.totalPages ? "disabled" : ""}>Next</button>
-            </div>
-          </section>
-          <section class="workspace-pane workspace-stack">
-            <div class="content-card">
-              <strong>Worker Pipeline</strong>
-              <p>
-                The first distributed pipeline now reads uploaded image sources from MinIO, generates thumbnails with Sharp, stores the derived object back in MinIO, and persists job outcomes in PostgreSQL.
-              </p>
-            </div>
-            <div class="content-card">
-              <strong>Project Context</strong>
-              <p>
-                \${state.selectedProject
-                  ? escapeHtml(state.selectedProject.name) + " currently has " + escapeHtml(String(state.selectedProject.assetCount)) + " assets available for processing."
-                  : "Select a project from the Projects section to inspect its processing queue."}
-              </p>
-            </div>
-          </section>
-        </div>
-      \`;
-    }
-
-    function renderProjectsSection() {
-      return \`
-        <div class="workspace-grid">
-          <section class="workspace-pane workspace-stack">
-            <div class="list-header">
-              <div>
-                <strong>Projects</strong>
-                <p>Search, create, and switch between user-scoped workspaces.</p>
-              </div>
-              <span class="code-pill">\${state.projects ? state.projects.totalItems : 0} total</span>
-            </div>
-            <form id="projects-filter-form">
-              <label>
-                Search Projects
-                <input type="search" name="query" value="\${escapeHtml(state.projectsQuery)}" placeholder="Filter by name or description" />
-              </label>
-              <div class="form-actions">
-                <button class="ghost-button" type="submit">Apply Filter</button>
-              </div>
-            </form>
-            <form id="project-create-form" class="section-divider">
-              <strong>Create Project</strong>
-              <label>
-                Project Name
-                <input type="text" name="name" placeholder="Prototype Workspace" required />
-              </label>
-              <label>
-                Description
-                <textarea name="description" placeholder="What this workspace is for"></textarea>
-              </label>
-              <div class="form-actions">
-                <button class="primary-button" type="submit">Create Project</button>
-              </div>
-            </form>
-            <div class="section-divider">
-              \${state.projectsBusy ? '<p class="muted-note">Refreshing projects...</p>' : ""}
-              \${renderProjectsList()}
-            </div>
-            <div class="pagination">
-              <button class="ghost-button" type="button" data-pagination-target="projects" data-direction="prev" \${!state.projects || state.projectsPage <= 1 ? "disabled" : ""}>Previous</button>
-              <span class="muted-note">Page \${state.projectsPage} of \${state.projects?.totalPages ?? 1}</span>
-              <button class="ghost-button" type="button" data-pagination-target="projects" data-direction="next" \${!state.projects || state.projectsPage >= state.projects.totalPages ? "disabled" : ""}>Next</button>
-            </div>
-          </section>
-          <section class="workspace-pane workspace-stack">
-            \${state.selectedProject
-              ? \`
-                <div class="list-header">
-                  <div>
-                    <strong>\${escapeHtml(state.selectedProject.name)}</strong>
-                    <p>Project detail, editable metadata, and its current asset inventory.</p>
-                  </div>
-                  <span class="code-pill">\${state.selectedProject.assetCount} assets</span>
-                </div>
-                \${renderLifecycleChips(state.selectedProject.assetStatusCounts)}
-                <form id="project-edit-form">
-                  <label>
-                    Project Name
-                    <input type="text" name="name" value="\${escapeHtml(state.selectedProject.name)}" required />
-                  </label>
-                  <label>
-                    Description
-                    <textarea name="description">\${escapeHtml(state.selectedProject.description ?? "")}</textarea>
-                  </label>
-                  <div class="project-actions">
-                    <button class="primary-button" type="submit">Save Project</button>
-                    <button class="ghost-button" type="button" id="project-delete-button">Delete Project</button>
-                  </div>
-                </form>
-                <div class="section-divider workspace-stack">
-                  <div class="list-header">
-                    <div>
-                      <strong>Asset Inventory</strong>
-                      <p>Upload source files into MinIO, filter the resulting inventory, and keep manual draft records when needed.</p>
-                    </div>
-                    <span class="code-pill">\${state.assets ? state.assets.totalItems : 0} visible</span>
-                  </div>
-                  <form id="asset-filter-form">
-                    <div class="field-grid">
-                      <label>
-                        Search Assets
-                        <input type="search" name="query" value="\${escapeHtml(state.assetQuery)}" placeholder="Filename" />
-                      </label>
-                      <label>
-                        Status
-                        <select name="status">
-                          <option value="all" \${state.assetStatus === "all" ? "selected" : ""}>All statuses</option>
-                          \${assetLifecycleStatuses
-                            .map(
-                              (status) => \`
-                                <option value="\${status}" \${state.assetStatus === status ? "selected" : ""}>\${status}</option>
-                              \`
-                            )
-                            .join("")}
-                        </select>
-                      </label>
-                      <label>
-                        Kind
-                        <select name="kind">
-                          <option value="all" \${state.assetKind === "all" ? "selected" : ""}>All kinds</option>
-                          \${assetKinds
-                            .map(
-                              (kind) => \`
-                                <option value="\${kind}" \${state.assetKind === kind ? "selected" : ""}>\${kind}</option>
-                              \`
-                            )
-                            .join("")}
-                        </select>
-                      </label>
-                    </div>
-                    <div class="form-actions">
-                      <button class="ghost-button" type="submit">Apply Asset Filters</button>
-                    </div>
-                  </form>
-                  \${renderUploadPanel()}
-                  <form id="asset-create-form">
-                    <strong>Create Manual Draft Record</strong>
-                    <div class="field-grid">
-                      <label>
-                        Filename
-                        <input type="text" name="originalFilename" placeholder="cover-art.png" required />
-                      </label>
-                      <label>
-                        Content Type
-                        <input type="text" name="contentType" placeholder="image/png" required />
-                      </label>
-                      <label>
-                        Size In Bytes
-                        <input type="number" name="byteSize" min="0" step="1" value="0" required />
-                      </label>
-                      <label>
-                        Kind
-                        <select name="kind">
-                          \${assetKinds
-                            .map((kind) => \`<option value="\${kind}">\${kind}</option>\`)
-                            .join("")}
-                        </select>
-                      </label>
-                      <label>
-                        Initial Status
-                        <select name="status">
-                          \${assetLifecycleStatuses
-                            .map(
-                              (status) => \`
-                                <option value="\${status}" \${status === "draft" ? "selected" : ""}>\${status}</option>
-                              \`
-                            )
-                            .join("")}
-                        </select>
-                      </label>
-                    </div>
-                    <div class="form-actions">
-                      <button class="primary-button" type="submit">Add Asset Record</button>
-                    </div>
-                  </form>
-                  \${state.assetsBusy ? '<p class="muted-note">Refreshing asset inventory...</p>' : ""}
-                  \${renderAssetList()}
-                  <div class="pagination">
-                    <button class="ghost-button" type="button" data-pagination-target="assets" data-direction="prev" \${!state.assets || state.assetPage <= 1 ? "disabled" : ""}>Previous</button>
-                    <span class="muted-note">Page \${state.assetPage} of \${state.assets?.totalPages ?? 1}</span>
-                    <button class="ghost-button" type="button" data-pagination-target="assets" data-direction="next" \${!state.assets || state.assetPage >= state.assets.totalPages ? "disabled" : ""}>Next</button>
-                  </div>
-                </div>
-              \`
-              : \`
-                <div class="empty-state">
-                  <strong>No active project selected</strong>
-                  <p>Create a project or choose one from the left column to unlock asset inventory management for this account.</p>
-                </div>
-              \`}
-          </section>
-        </div>
-      \`;
-    }
-
-    function renderActiveSection() {
-      switch (state.activeSection) {
-        case "projects":
-          return renderProjectsSection();
-        case "jobs":
-          return renderJobsSection();
-        default:
-          return renderOverviewSection();
+      if (findClosestTarget(event, "[data-job-thumbnail]")) {
+        void handleJobDownloadThumbnail(event);
       }
     }
 
-    function renderSignedOut() {
-      return \`
-        <section class="hero-shell">
-          <section class="hero-panel">
-            <span class="eyebrow">Phase 7 Live Sync</span>
-            <h1>Projects, uploads, worker jobs, and live delivery now move as one protected workflow.</h1>
-            <p>
-              The prototype now supports protected project CRUD, drag-and-drop uploads,
-              BullMQ-backed worker execution, Sharp thumbnail generation, authenticated output download,
-              and WebSocket-backed status delivery with reconnect and polling fallback.
-            </p>
-            <div class="hero-grid">
-              <article class="hero-blade">
-                <strong>Project Scope</strong>
-                <p>User-owned projects can now be created, updated, filtered, and removed.</p>
-              </article>
-              <article class="hero-blade">
-                <strong>Asset Storage</strong>
-                <p>Supported source files now move through the API into MinIO with persisted object keys.</p>
-              </article>
-              <article class="hero-blade">
-                <strong>Async Execution</strong>
-                <p>Uploaded images can now be queued for thumbnail generation and tracked through persisted job states.</p>
-              </article>
-              <article class="hero-blade">
-                <strong>Live Status</strong>
-                <p>Completion and failure notifications now reconcile the frontend without relying on manual refresh.</p>
-              </article>
-            </div>
-            <div class="status-strip">
-              <strong>Dependency Status</strong>
-              \${renderInfrastructure()}
-            </div>
-          </section>
-          <aside class="auth-panel">
-            <span class="mini-label">Prototype Access</span>
-            <div>
-              <h2>\${state.authMode === "signup" ? "Create an account" : "Sign in"}</h2>
-              <p>Use any valid email and a password with at least eight characters.</p>
-            </div>
-            <div class="mode-switch">
-              <button class="mode-button" type="button" data-auth-mode="signin" data-active="\${state.authMode === "signin"}">Sign In</button>
-              <button class="mode-button" type="button" data-auth-mode="signup" data-active="\${state.authMode === "signup"}">Register</button>
-            </div>
-            <form id="auth-form">
-              <label>
-                Email
-                <input type="email" name="email" placeholder="creator@studio.test" autocomplete="email" required />
-              </label>
-              <label>
-                Password
-                <input type="password" name="password" placeholder="minimum 8 characters" autocomplete="\${state.authMode === "signup" ? "new-password" : "current-password"}" required />
-              </label>
-              <div class="form-actions">
-                <button class="primary-button" type="submit" \${state.busy ? "disabled" : ""}>
-                  \${state.busy ? "Working..." : state.authMode === "signup" ? "Register And Enter" : "Sign In And Enter"}
-                </button>
-              </div>
-            </form>
-            <p class="message" data-tone="\${state.messageTone}">\${escapeHtml(state.message)}</p>
-          </aside>
-        </section>
-      \`;
+    function handleDelegatedSubmit(event) {
+      if (findClosestTarget(event, "#auth-form")) {
+        void submitAuth(event);
+        return;
+      }
+
+      if (findClosestTarget(event, "#projects-filter-form")) {
+        void handleProjectsFilterSubmit(event);
+        return;
+      }
+
+      if (findClosestTarget(event, "#project-create-form")) {
+        void handleProjectCreate(event);
+        return;
+      }
+
+      if (findClosestTarget(event, "#project-edit-form")) {
+        void handleProjectUpdate(event);
+        return;
+      }
+
+      if (findClosestTarget(event, "#asset-filter-form")) {
+        void handleAssetFilterSubmit(event);
+        return;
+      }
+
+      if (findClosestTarget(event, "#jobs-filter-form")) {
+        void handleJobFilterSubmit(event);
+        return;
+      }
+
+      if (findClosestTarget(event, "#asset-create-form")) {
+        void handleAssetCreate(event);
+        return;
+      }
+
+      if (findClosestTarget(event, "#asset-upload-form")) {
+        void handleAssetUpload(event);
+        return;
+      }
+
+      if (findClosestTarget(event, "[data-asset-status-form]")) {
+        void handleAssetStatusSubmit(event);
+      }
     }
 
-    function renderSignedIn() {
-      return \`
-        <section class="shell">
-          <aside class="shell-sidebar">
-            <span class="eyebrow">Workspace Shell</span>
-            <div>
-              <h3>\${escapeHtml(state.user.email)}</h3>
-              <p class="shell-nav-note">
-                This account now owns projects, uploaded assets, and queue-visible worker workflows.
-              </p>
-            </div>
-            <div class="shell-nav">
-              <button class="shell-link" type="button" data-section="overview" data-active="\${state.activeSection === "overview"}">
-                <span>Overview</span>
-                <span class="code-pill">01</span>
-              </button>
-              <button class="shell-link" type="button" data-section="projects" data-active="\${state.activeSection === "projects"}">
-                <span>Projects</span>
-                <span class="code-pill">02</span>
-              </button>
-              <button class="shell-link" type="button" data-section="jobs" data-active="\${state.activeSection === "jobs"}">
-                <span>Jobs</span>
-                <span class="code-pill">03</span>
-              </button>
-            </div>
-            <div class="status-strip">
-              <strong>Infrastructure</strong>
-              \${renderInfrastructure()}
-            </div>
-            <button class="ghost-button" type="button" id="logout-button">Sign Out</button>
-          </aside>
-          <section class="shell-main">
-            <div class="shell-header">
-              <div>
-                <span class="mini-label">Protected Experience</span>
-                <h2>Identity, projects, and processing state now stay synchronized inside one modular shell.</h2>
-              </div>
-              <span class="session-pill">Access token present • \${escapeHtml(realtimeStatusLabel().toLowerCase())}</span>
-            </div>
-            <div class="status-grid">
-              <div class="status-strip">
-                <strong>User Scope</strong>
-                <div class="status-value">\${state.projects?.totalItems ?? 0}</div>
-                <p>Project list results are now filtered, paginated, and enforced per account.</p>
-              </div>
-              <div class="status-strip">
-                <strong>Stored Assets</strong>
-                <div class="status-value">\${state.selectedProject?.assetCount ?? 0}</div>
-                <p>Asset counts and lifecycle summaries update on the currently active project after uploads and worker jobs complete.</p>
-              </div>
-              <div class="status-strip">
-                <strong>Queue Runtime</strong>
-                <div class="status-value">\${escapeHtml(realtimeStatusValue())}</div>
-                <p>Live updates now travel over <span class="code-pill">\${escapeHtml(buildRealtimeSocketUrl())}</span> with automatic resync and polling fallback.</p>
-              </div>
-            </div>
-            \${renderRealtimePanel()}
-            \${renderActiveSection()}
-            <section>
-              <span class="mini-label">Feature Map</span>
-              <div class="feature-grid">
-                \${featureCards
-                  .map(
-                    (feature) => \`
-                      <article class="feature-card">
-                        <strong>\${feature.label}</strong>
-                        <p>\${feature.responsibility}</p>
-                        <p><span class="code-pill">\${feature.nextPhase}</span></p>
-                      </article>
-                    \`
-                  )
-                  .join("")}
-              </div>
-            </section>
-            <p class="message" data-tone="\${state.messageTone}">\${escapeHtml(state.message)}</p>
-          </section>
-        </section>
-      \`;
+    function handleDelegatedChange(event) {
+      if (findClosestTarget(event, "#asset-upload-input")) {
+        handleUploadInputChange(event);
+        return;
+      }
+
+      if (findClosestTarget(event, "#asset-upload-kind")) {
+        handleUploadKindChange(event);
+      }
     }
 
-    function render() {
-      appElement.innerHTML = state.user ? renderSignedIn() : renderSignedOut();
-      document.body.dataset.auth = state.user ? "true" : "false";
+    function handleDelegatedDragEnter(event) {
+      if (findClosestTarget(event, "[data-upload-dropzone]")) {
+        handleUploadDragEnter(event);
+      }
+    }
 
-      document.querySelectorAll("[data-auth-mode]").forEach((element) => {
-        element.addEventListener("click", () => {
-          state.authMode = element.dataset.authMode;
-          setMessage(
-            state.authMode === "signup"
-              ? "Create an account and the workspace shell will open immediately."
-              : "Sign in with an existing account.",
-            "neutral"
-          );
-          render();
-        });
-      });
+    function handleDelegatedDragOver(event) {
+      if (findClosestTarget(event, "[data-upload-dropzone]")) {
+        handleUploadDragOver(event);
+      }
+    }
 
-      document.querySelectorAll("[data-section]").forEach((element) => {
-        element.addEventListener("click", () => {
-          state.activeSection = element.dataset.section;
-          render();
-        });
-      });
+    function handleDelegatedDragLeave(event) {
+      if (findClosestTarget(event, "[data-upload-dropzone]")) {
+        handleUploadDragLeave(event);
+      }
+    }
 
-      document.querySelectorAll("[data-project-id]").forEach((element) => {
-        element.addEventListener("click", handleProjectSelection);
-      });
-
-      document
-        .querySelectorAll("[data-pagination-target]")
-        .forEach((element) => {
-          element.addEventListener("click", handlePaginationClick);
-        });
-
-      document
-        .querySelectorAll("[data-asset-status-form]")
-        .forEach((element) => {
-          element.addEventListener("submit", handleAssetStatusSubmit);
-        });
-      document
-        .querySelectorAll("[data-asset-download]")
-        .forEach((element) => {
-          element.addEventListener("click", handleAssetDownload);
-        });
-      document
-        .querySelectorAll("[data-asset-process]")
-        .forEach((element) => {
-          element.addEventListener("click", handleAssetProcess);
-        });
-      document
-        .querySelectorAll("[data-job-retry]")
-        .forEach((element) => {
-          element.addEventListener("click", handleJobRetry);
-        });
-      document
-        .querySelectorAll("[data-job-thumbnail]")
-        .forEach((element) => {
-          element.addEventListener("click", handleJobDownloadThumbnail);
-        });
-      document
-        .querySelectorAll("[data-upload-dropzone]")
-        .forEach((element) => {
-          element.addEventListener("dragenter", handleUploadDragEnter);
-          element.addEventListener("dragover", handleUploadDragOver);
-          element.addEventListener("dragleave", handleUploadDragLeave);
-          element.addEventListener("drop", handleUploadDrop);
-        });
-
-      document.getElementById("auth-form")?.addEventListener("submit", submitAuth);
-      document.getElementById("logout-button")?.addEventListener("click", handleLogout);
-      document
-        .getElementById("projects-filter-form")
-        ?.addEventListener("submit", handleProjectsFilterSubmit);
-      document
-        .getElementById("project-create-form")
-        ?.addEventListener("submit", handleProjectCreate);
-      document
-        .getElementById("project-edit-form")
-        ?.addEventListener("submit", handleProjectUpdate);
-      document
-        .getElementById("project-delete-button")
-        ?.addEventListener("click", handleProjectDelete);
-      document
-        .getElementById("asset-filter-form")
-        ?.addEventListener("submit", handleAssetFilterSubmit);
-      document
-        .getElementById("jobs-filter-form")
-        ?.addEventListener("submit", handleJobFilterSubmit);
-      document
-        .getElementById("jobs-refresh-button")
-        ?.addEventListener("click", handleJobsRefresh);
-      document
-        .getElementById("asset-create-form")
-        ?.addEventListener("submit", handleAssetCreate);
-      document
-        .getElementById("asset-upload-form")
-        ?.addEventListener("submit", handleAssetUpload);
-      document
-        .getElementById("asset-upload-input")
-        ?.addEventListener("change", handleUploadInputChange);
-      document
-        .getElementById("asset-upload-kind")
-        ?.addEventListener("change", handleUploadKindChange);
+    function handleDelegatedDrop(event) {
+      if (findClosestTarget(event, "[data-upload-dropzone]")) {
+        handleUploadDrop(event);
+      }
     }
 
     window.addEventListener("beforeunload", () => {
       disconnectRealtime("idle");
     });
 
-    render();
+    if (appElement) {
+      appElement.addEventListener("click", handleDelegatedClick);
+      appElement.addEventListener("submit", handleDelegatedSubmit);
+      appElement.addEventListener("change", handleDelegatedChange);
+      appElement.addEventListener("dragenter", handleDelegatedDragEnter);
+      appElement.addEventListener("dragover", handleDelegatedDragOver);
+      appElement.addEventListener("dragleave", handleDelegatedDragLeave);
+      appElement.addEventListener("drop", handleDelegatedDrop);
+    }
+
+    renderNow();
     void restoreSession();
   `;
 }
