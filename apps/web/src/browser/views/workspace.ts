@@ -34,7 +34,7 @@ export const workspaceViewModuleSource = `
         return \`
           <div class="empty-state">
             <strong>No projects yet</strong>
-            <p>Create the first workspace entry for this account and uploads, jobs, and derived outputs will attach to it immediately.</p>
+            <p>Create a workspace to start collecting uploads, drafts, and processing history.</p>
           </div>
         \`;
       }
@@ -58,73 +58,69 @@ export const workspaceViewModuleSource = `
         .join("")}</div>\`;
     }
 
-    function renderAssetList() {
+    function renderAssetListEmptyState() {
       if (!state.selectedProject) {
         return \`
           <div class="empty-state">
             <strong>Select a project</strong>
-            <p>Project details and asset inventory appear here once a workspace entry is active.</p>
+            <p>Choose a workspace to manage its files, drafts, and queue activity.</p>
           </div>
         \`;
       }
 
-      if (!state.assets || state.assets.items.length === 0) {
-        return \`
-          <div class="empty-state">
-            <strong>No asset records yet</strong>
-            <p>This project is ready for source uploads or manual draft metadata. Add the first asset below to start the lifecycle history.</p>
-          </div>
-        \`;
-      }
+      return \`
+        <div class="empty-state">
+          <strong>No assets yet</strong>
+          <p>Upload a source file or add a quick draft record to start the pipeline.</p>
+        </div>
+      \`;
+    }
 
-      return \`<div class="asset-list">\${state.assets.items
-        .map(
-          (asset) => \`
-            <article class="asset-row">
-              <div class="asset-row-head">
-                <div>
-                  <strong>\${escapeHtml(asset.originalFilename)}</strong>
-                  <p>\${escapeHtml(asset.contentType)} • \${escapeHtml(asset.kind)} • \${escapeHtml(formatBytes(asset.byteSize))}</p>
-                </div>
-                <span class="summary-chip" data-status="\${asset.status}">
-                  <strong>\${asset.status}</strong>
-                  <span>\${escapeHtml(formatDate(asset.updatedAt))}</span>
-                </span>
-              </div>
-              <p class="muted-note">
-                \${asset.objectKey
-                  ? \`Stored source object: <span class="code-pill">\${escapeHtml(asset.objectKey)}</span>\`
-                  : "No source object stored yet. This record is still metadata-only."}
-              </p>
-              <form data-asset-status-form="true" data-asset-id="\${asset.id}">
-                <div class="field-grid">
-                  <label>
-                    Lifecycle Status
-                    <select name="status">
-                      \${assetLifecycleStatuses
-                        .map(
-                          (status) => \`
-                            <option value="\${status}" \${asset.status === status ? "selected" : ""}>\${status}</option>
-                          \`
-                        )
-                        .join("")}
-                    </select>
-                  </label>
-                </div>
-                <div class="inline-actions">
-                  <button class="ghost-button" type="submit">Apply Status</button>
-                  \${asset.objectKey && asset.kind === "image"
-                    ? \`<button class="ghost-button" type="button" data-asset-process="true" data-asset-id="\${asset.id}" \${asset.status === "queued" || asset.status === "processing" ? "disabled" : ""}>Queue Thumbnail Job</button>\`
-                    : ""}
-                  \${asset.objectKey
-                    ? \`<button class="ghost-button" type="button" data-asset-download="true" data-asset-id="\${asset.id}" data-filename="\${escapeHtml(asset.originalFilename)}">Download Source</button>\`
-                    : ""}
-                </div>
-              </form>
-            </article>
-          \`
-        )
-        .join("")}</div>\`;
+    function renderAssetRow(asset) {
+      return \`
+        <article class="asset-row">
+          <div class="asset-row-head">
+            <div>
+              <strong>\${escapeHtml(asset.originalFilename)}</strong>
+              <p>\${escapeHtml(asset.contentType)} • \${escapeHtml(asset.kind)} • \${escapeHtml(formatBytes(asset.byteSize))}</p>
+            </div>
+            <span class="summary-chip" data-status="\${asset.status}">
+              <strong>\${asset.status}</strong>
+              <span>\${escapeHtml(formatDate(asset.updatedAt))}</span>
+            </span>
+          </div>
+          <p class="muted-note">
+            \${asset.objectKey
+              ? \`Stored source: <span class="code-pill">\${escapeHtml(asset.objectKey)}</span>\`
+              : "Metadata-only draft. Upload a file when you are ready to process it."}
+          </p>
+          <form data-asset-status-form="true" data-asset-id="\${asset.id}">
+            <div class="field-grid">
+              <label>
+                Status
+                <select name="status">
+                  \${assetLifecycleStatuses
+                    .map(
+                      (status) => \`
+                        <option value="\${status}" \${(state.assetItemStatusDrafts[asset.id] ?? asset.status) === status ? "selected" : ""}>\${status}</option>
+                      \`
+                    )
+                    .join("")}
+                </select>
+              </label>
+            </div>
+            <div class="inline-actions">
+              <button class="ghost-button" type="submit">Apply Status</button>
+              \${asset.objectKey && asset.kind === "image"
+                ? \`<button class="ghost-button" type="button" data-asset-process="true" data-asset-id="\${asset.id}" \${asset.status === "queued" || asset.status === "processing" ? "disabled" : ""}>Generate Thumbnail</button>\`
+                : ""}
+              \${asset.objectKey
+                ? \`<button class="ghost-button" type="button" data-asset-download="true" data-asset-id="\${asset.id}" data-filename="\${escapeHtml(asset.originalFilename)}">Download Source</button>\`
+                : ""}
+            </div>
+          </form>
+        </article>
+      \`;
     }
 
     function renderJobsList() {
@@ -132,7 +128,7 @@ export const workspaceViewModuleSource = `
         return \`
           <div class="empty-state">
             <strong>Select a project</strong>
-            <p>Queued and completed processing jobs will appear here once a project is active.</p>
+            <p>Choose a workspace to review queue progress and finished outputs.</p>
           </div>
         \`;
       }
@@ -141,7 +137,7 @@ export const workspaceViewModuleSource = `
         return \`
           <div class="empty-state">
             <strong>No jobs yet</strong>
-            <p>Queue a thumbnail generation job from the asset inventory to start the first worker pipeline.</p>
+            <p>Trigger thumbnail generation from the asset list to start the first run.</p>
           </div>
         \`;
       }
@@ -155,7 +151,7 @@ export const workspaceViewModuleSource = `
               <div class="asset-row-head">
                 <div>
                   <strong>\${escapeHtml(job.payload?.originalFilename ?? job.assetId)}</strong>
-                  <p>\${escapeHtml(job.kind)} • attempts \${job.attempts}/\${job.maxAttempts}</p>
+                  <p>\${escapeHtml(job.kind)} • attempt \${job.attempts}/\${job.maxAttempts}</p>
                 </div>
                 <span class="summary-chip" data-status="\${job.status}">
                   <strong>\${job.status}</strong>
@@ -163,14 +159,14 @@ export const workspaceViewModuleSource = `
                 </span>
               </div>
               <p class="muted-note">
-                Queue: <span class="code-pill">\${escapeHtml(job.queueName)}</span>
-                • Job ID: <span class="code-pill">\${escapeHtml(job.id)}</span>
+                Queue <span class="code-pill">\${escapeHtml(job.queueName)}</span>
+                • Job <span class="code-pill">\${escapeHtml(job.id)}</span>
               </p>
               \${job.failureReason
                 ? \`<p class="message" data-tone="danger">\${escapeHtml(job.failureReason)}</p>\`
                 : ""}
               \${thumbnail
-                ? \`<p class="muted-note">Thumbnail stored at <span class="code-pill">\${escapeHtml(thumbnail.objectKey)}</span></p>\`
+                ? \`<p class="muted-note">Output <span class="code-pill">\${escapeHtml(thumbnail.objectKey)}</span></p>\`
                 : ""}
               <div class="inline-actions">
                 \${job.status === "failed"
@@ -190,8 +186,8 @@ export const workspaceViewModuleSource = `
       if (state.notifications.length === 0) {
         return \`
           <div class="empty-state">
-            <strong>No delivery notifications yet</strong>
-            <p>Realtime completion and failure notices for the selected account will collect here once jobs start moving through the worker.</p>
+            <strong>No activity yet</strong>
+            <p>Completion and failure notices will appear here as jobs move through the queue.</p>
           </div>
         \`;
       }
@@ -226,7 +222,7 @@ export const workspaceViewModuleSource = `
           <div class="list-header">
             <div>
               <strong>Live Delivery</strong>
-              <p>Authenticated socket updates now flow from the worker through the API and reconcile the selected project without manual refresh.</p>
+              <p>Processing updates appear here automatically while you work inside the shell.</p>
             </div>
             <span class="code-pill">\${escapeHtml(realtimeStatusLabel())}</span>
           </div>
@@ -245,7 +241,7 @@ export const workspaceViewModuleSource = `
             </span>
           </div>
           <p class="muted-note">
-            Endpoint <span class="code-pill">\${escapeHtml(buildRealtimeSocketUrl())}</span>
+            Socket <span class="code-pill">\${escapeHtml(buildRealtimeSocketUrl())}</span>
             • Connection <span class="code-pill">\${escapeHtml(state.realtimeConnectionId ?? "pending")}</span>
           </p>
           <p class="muted-note">
@@ -259,27 +255,16 @@ export const workspaceViewModuleSource = `
     }
 
     function renderUploadPanel() {
-      const selectedFile = state.pendingUploadFile;
-      const progressMarkup =
-        state.uploadBusy || state.uploadProgress > 0
-          ? \`
-              <div class="upload-progress" aria-live="polite">
-                <div class="upload-progress-bar">
-                  <span style="width: \${Math.max(state.uploadProgress, 6)}%"></span>
-                </div>
-                <p class="muted-note">
-                  \${state.uploadBusy
-                    ? \`Uploading \${state.uploadProgress}%\`
-                    : "Upload ready."}
-                </p>
-              </div>
-            \`
-          : "";
-
       return \`
-        <form id="asset-upload-form">
-          <strong>Upload Source Asset</strong>
-          <div class="upload-dropzone" data-upload-dropzone="true" data-drag="\${state.uploadDragActive}">
+        <form id="asset-upload-form" class="workspace-subsection">
+          <div class="subsection-head">
+            <div>
+              <strong>Upload Source Asset</strong>
+              <p>Bring a real file into the workspace and keep it ready for processing.</p>
+            </div>
+            <span class="summary-chip" data-status="uploaded">Storage</span>
+          </div>
+          <div id="asset-upload-dropzone" class="upload-dropzone" data-upload-dropzone="true" data-drag="false">
             <input
               id="asset-upload-input"
               class="visually-hidden"
@@ -291,17 +276,9 @@ export const workspaceViewModuleSource = `
               <label class="upload-picker" for="asset-upload-input">browse from disk</label>.
             </p>
             <p class="muted-note">
-              Supported categories: image, audio, video, and document. Current limit: 25 MB per file.
+              Supports image, audio, video, and document files up to 25 MB.
             </p>
-            \${selectedFile
-              ? \`
-                  <div class="upload-meta">
-                    <span class="code-pill">\${escapeHtml(selectedFile.name)}</span>
-                    <span class="code-pill">\${escapeHtml(selectedFile.type || "application/octet-stream")}</span>
-                    <span class="code-pill">\${escapeHtml(formatBytes(selectedFile.size))}</span>
-                  </div>
-                \`
-              : ""}
+            <div id="asset-upload-meta-slot"></div>
           </div>
           <div class="field-grid">
             <label>
@@ -317,13 +294,44 @@ export const workspaceViewModuleSource = `
               </select>
             </label>
           </div>
-          \${progressMarkup}
+          <div id="asset-upload-progress-slot"></div>
           <div class="form-actions">
-            <button class="primary-button" type="submit" \${!selectedFile || state.uploadBusy ? "disabled" : ""}>
-              \${state.uploadBusy ? "Uploading..." : selectedFile ? "Upload To Storage" : "Choose A File First"}
-            </button>
+            <button id="asset-upload-submit-button" class="primary-button" type="submit">Choose A File First</button>
           </div>
         </form>
+      \`;
+    }
+
+    function renderUploadMeta() {
+      const selectedFile = state.pendingUploadFile;
+
+      if (!selectedFile) {
+        return "";
+      }
+
+      return \`
+        <div class="upload-meta">
+          <span class="code-pill">\${escapeHtml(selectedFile.name)}</span>
+          <span class="code-pill">\${escapeHtml(selectedFile.type || "application/octet-stream")}</span>
+          <span class="code-pill">\${escapeHtml(formatBytes(selectedFile.size))}</span>
+        </div>
+      \`;
+    }
+
+    function renderUploadProgress() {
+      if (!state.uploadBusy && state.uploadProgress <= 0) {
+        return "";
+      }
+
+      return \`
+        <div class="upload-progress" aria-live="polite">
+          <div class="upload-progress-bar">
+            <span style="width: \${Math.max(state.uploadProgress, 6)}%"></span>
+          </div>
+          <p class="muted-note">
+            \${state.uploadBusy ? \`Uploading \${state.uploadProgress}%\` : "Upload ready."}
+          </p>
+        </div>
       \`;
     }
 
@@ -333,33 +341,56 @@ export const workspaceViewModuleSource = `
       const lifecycleCoverage = state.selectedProject
         ? countLifecycleCoverage(state.selectedProject.assetStatusCounts)
         : 0;
+      const selectedProjectName = state.selectedProject
+        ? escapeHtml(state.selectedProject.name)
+        : "No project selected";
 
       return \`
         <div class="content-grid">
           <div class="content-card">
-            <strong>Project Inventory</strong>
+            <strong>Projects</strong>
             <div class="status-value">\${projectTotal}</div>
-            <p>Projects are now persisted per user and paginated through protected API routes.</p>
+            <p>Keep separate workspaces for campaigns, releases, or content batches.</p>
           </div>
           <div class="content-card">
-            <strong>Selected Assets</strong>
+            <strong>Active Assets</strong>
             <div class="status-value">\${selectedProjectAssets}</div>
-            <p>Asset records now carry either metadata-only drafts or real source objects stored behind the API boundary.</p>
+            <p>The current workspace keeps both uploaded sources and metadata-only drafts in one place.</p>
           </div>
           <div class="content-card">
-            <strong>Lifecycle Coverage</strong>
+            <strong>Pipeline Coverage</strong>
             <div class="status-value">\${lifecycleCoverage}/\${assetLifecycleStatuses.length}</div>
-            <p>Status transitions now include upload, queued execution, processing, and terminal worker outcomes.</p>
+            <p>Status moves from draft to completed as assets flow through upload and processing.</p>
           </div>
         </div>
-        <div class="content-card">
-          <strong>Selected Project Snapshot</strong>
-          <p>
-            \${state.selectedProject
-              ? escapeHtml(state.selectedProject.name) + " is currently active, with " + escapeHtml(String(state.selectedProject.assetCount)) + " tracked asset records."
-              : "No project is selected yet. Create or choose a project to inspect its asset inventory."}
-          </p>
-          \${state.selectedProject ? renderLifecycleChips(state.selectedProject.assetStatusCounts) : ""}
+        <div class="content-grid">
+          <div class="content-card">
+            <strong>Current Focus</strong>
+            <p>\${selectedProjectName}</p>
+            <p class="muted-note">
+              \${state.selectedProject
+                ? \`This workspace currently tracks \${escapeHtml(String(state.selectedProject.assetCount))} assets.\`
+                : "Choose a workspace to unlock uploads, drafts, and jobs."}
+            </p>
+            \${state.selectedProject ? renderLifecycleChips(state.selectedProject.assetStatusCounts) : ""}
+          </div>
+          <div class="content-card">
+            <strong>Recommended Flow</strong>
+            <div class="workflow-list">
+              <div class="workflow-step">
+                <span class="code-pill">01</span>
+                <p>Create or select a project.</p>
+              </div>
+              <div class="workflow-step">
+                <span class="code-pill">02</span>
+                <p>Upload a file or create a draft asset.</p>
+              </div>
+              <div class="workflow-step">
+                <span class="code-pill">03</span>
+                <p>Generate a thumbnail and monitor the queue.</p>
+              </div>
+            </div>
+          </div>
         </div>
       \`;
     }
@@ -377,8 +408,8 @@ export const workspaceViewModuleSource = `
       return \`
         <div class="list-header">
           <div>
-            <strong>Job Queue</strong>
-            <p>Review queued, active, completed, and failed worker activity for the selected project.</p>
+            <strong>Processing Queue</strong>
+            <p>Review active work, finished runs, and failures for the current project.</p>
           </div>
           <span class="code-pill">\${state.jobs ? state.jobs.totalItems : 0} total</span>
         </div>
@@ -391,21 +422,19 @@ export const workspaceViewModuleSource = `
           <div class="field-grid">
             <label>
               Status
-              <select name="status">
-                <option value="all" \${state.jobsStatus === "all" ? "selected" : ""}>All statuses</option>
+              <select id="jobs-filter-status" name="status">
+                <option value="all">All statuses</option>
                 \${jobLifecycleStatuses
                   .map(
-                    (status) => \`
-                      <option value="\${status}" \${state.jobsStatus === status ? "selected" : ""}>\${status}</option>
-                    \`
+                    (status) => \`<option value="\${status}">\${status}</option>\`
                   )
                   .join("")}
               </select>
             </label>
           </div>
           <div class="form-actions">
-            <button class="ghost-button" type="submit">Apply Job Filter</button>
-            <button class="ghost-button" type="button" id="jobs-refresh-button">Refresh Jobs</button>
+            <button class="ghost-button" type="submit">Filter Queue</button>
+            <button class="ghost-button" type="button" id="jobs-refresh-button">Refresh</button>
           </div>
         </form>
       \`;
@@ -435,20 +464,44 @@ export const workspaceViewModuleSource = `
     }
 
     function renderJobsRightContent() {
+      const items = state.jobs?.items ?? [];
+      const activeCount = items.filter((job) => job.status === "active").length;
+      const queuedCount = items.filter((job) => job.status === "queued").length;
+      const completedCount = items.filter((job) => job.status === "completed").length;
+      const failedCount = items.filter((job) => job.status === "failed").length;
+
       return \`
         <div class="content-card">
-          <strong>Worker Pipeline</strong>
-          <p>
-            The first distributed pipeline now reads uploaded image sources from MinIO, generates thumbnails with Sharp, stores the derived object back in MinIO, and persists job outcomes in PostgreSQL.
-          </p>
+          <strong>Queue Snapshot</strong>
+          <div class="chip-cluster">
+            <span class="summary-chip" data-status="processing"><strong>Active</strong><span>\${activeCount}</span></span>
+            <span class="summary-chip" data-status="queued"><strong>Queued</strong><span>\${queuedCount}</span></span>
+            <span class="summary-chip" data-status="completed"><strong>Done</strong><span>\${completedCount}</span></span>
+            <span class="summary-chip" data-status="failed"><strong>Failed</strong><span>\${failedCount}</span></span>
+          </div>
+          <p>The worker currently reads source images, creates thumbnails, stores outputs, and writes the result back to the project history.</p>
         </div>
         <div class="content-card">
-          <strong>Project Context</strong>
+          <strong>What To Watch</strong>
           <p>
             \${state.selectedProject
               ? escapeHtml(state.selectedProject.name) + " currently has " + escapeHtml(String(state.selectedProject.assetCount)) + " assets available for processing."
-              : "Select a project from the Projects section to inspect its processing queue."}
+              : "Select a project from the Library section to inspect its queue."}
           </p>
+          <div class="workflow-list">
+            <div class="workflow-step">
+              <span class="code-pill">A</span>
+              <p>Queued jobs are waiting for the worker.</p>
+            </div>
+            <div class="workflow-step">
+              <span class="code-pill">B</span>
+              <p>Completed jobs expose a thumbnail download.</p>
+            </div>
+            <div class="workflow-step">
+              <span class="code-pill">C</span>
+              <p>Failed jobs can be retried from the list.</p>
+            </div>
+          </div>
         </div>
       \`;
     }
@@ -476,8 +529,8 @@ export const workspaceViewModuleSource = `
       return \`
         <div class="list-header">
           <div>
-            <strong>Projects</strong>
-            <p>Search, create, and switch between user-scoped workspaces.</p>
+            <strong>Workspace Library</strong>
+            <p>Create, search, and switch between your active projects.</p>
           </div>
           <span class="code-pill">\${state.projects ? state.projects.totalItems : 0} total</span>
         </div>
@@ -492,7 +545,7 @@ export const workspaceViewModuleSource = `
             <input id="projects-filter-query" type="search" name="query" placeholder="Filter by name or description" autocomplete="off" />
           </label>
           <div class="form-actions">
-            <button class="ghost-button" type="submit">Apply Filter</button>
+            <button class="ghost-button" type="submit">Filter Library</button>
           </div>
         </form>
       \`;
@@ -500,18 +553,23 @@ export const workspaceViewModuleSource = `
 
     function renderProjectCreateForm() {
       return \`
-        <form id="project-create-form" class="section-divider">
-          <strong>Create Project</strong>
+        <form id="project-create-form" class="section-divider workspace-subsection">
+          <div class="subsection-head">
+            <div>
+              <strong>Create Project</strong>
+              <p>Start a new workspace for a release, client, or content batch.</p>
+            </div>
+          </div>
           <label>
             Project Name
             <input type="text" name="name" placeholder="Prototype Workspace" autocomplete="off" required />
           </label>
           <label>
             Description
-            <textarea name="description" placeholder="What this workspace is for" autocomplete="off"></textarea>
+            <textarea name="description" placeholder="Short note about what this project is for" autocomplete="off"></textarea>
           </label>
           <div class="form-actions">
-            <button class="primary-button" type="submit">Create Project</button>
+            <button class="primary-button" type="submit">Create Workspace</button>
           </div>
         </form>
       \`;
@@ -562,8 +620,8 @@ export const workspaceViewModuleSource = `
 
       return \`
         <div class="empty-state">
-          <strong>No active project selected</strong>
-          <p>Create a project or choose one from the left column to unlock asset inventory management for this account.</p>
+          <strong>No workspace selected</strong>
+          <p>Pick a project from the library to edit details, upload files, and manage processing.</p>
         </div>
       \`;
     }
@@ -577,7 +635,7 @@ export const workspaceViewModuleSource = `
         <div class="list-header">
           <div>
             <strong>\${escapeHtml(state.selectedProject.name)}</strong>
-            <p>Project detail, editable metadata, and its current asset inventory.</p>
+            <p>Edit the workspace, then move straight into uploads and queue-ready assets.</p>
           </div>
           <span class="code-pill">\${state.selectedProject.assetCount} assets</span>
         </div>
@@ -596,15 +654,23 @@ export const workspaceViewModuleSource = `
       }
 
       return \`
-        <form id="project-edit-form">
-          <label>
-            Project Name
-            <input id="project-edit-name" type="text" name="name" autocomplete="off" required />
-          </label>
-          <label>
-            Description
-            <textarea id="project-edit-description" name="description" autocomplete="off"></textarea>
-          </label>
+        <form id="project-edit-form" class="workspace-subsection">
+          <div class="subsection-head">
+            <div>
+              <strong>Project Settings</strong>
+              <p>Keep the workspace title and summary aligned with the work it contains.</p>
+            </div>
+          </div>
+          <div class="field-grid">
+            <label>
+              Project Name
+              <input id="project-edit-name" type="text" name="name" autocomplete="off" required />
+            </label>
+            <label class="field-span-2">
+              Description
+              <textarea id="project-edit-description" name="description" autocomplete="off"></textarea>
+            </label>
+          </div>
           <div class="project-actions">
             <button class="primary-button" type="submit">Save Project</button>
             <button class="ghost-button" type="button" id="project-delete-button">Delete Project</button>
@@ -614,17 +680,13 @@ export const workspaceViewModuleSource = `
     }
 
     function renderProjectAssetsHeader() {
-      if (!state.selectedProject) {
-        return "";
-      }
-
       return \`
         <div class="list-header">
           <div>
             <strong>Asset Inventory</strong>
-            <p>Upload source files into MinIO, filter the resulting inventory, and keep manual draft records when needed.</p>
+            <p>Upload source files, keep draft placeholders, and move each asset through the workflow.</p>
           </div>
-          <span class="code-pill">\${state.assets ? state.assets.totalItems : 0} visible</span>
+          <span id="projects-right-assets-count-pill" class="code-pill">0 visible</span>
         </div>
       \`;
     }
@@ -639,7 +701,7 @@ export const workspaceViewModuleSource = `
           <div class="field-grid">
             <label>
               Search Assets
-              <input id="asset-filter-query" type="search" name="query" placeholder="Filename" autocomplete="off" />
+              <input id="asset-filter-query" type="search" name="query" placeholder="Search by filename" autocomplete="off" />
             </label>
             <label>
               Status
@@ -665,7 +727,7 @@ export const workspaceViewModuleSource = `
             </label>
           </div>
           <div class="form-actions">
-            <button class="ghost-button" type="submit">Apply Asset Filters</button>
+            <button class="ghost-button" type="submit">Filter Assets</button>
           </div>
         </form>
       \`;
@@ -677,24 +739,30 @@ export const workspaceViewModuleSource = `
       }
 
       return \`
-        <form id="asset-create-form">
-          <strong>Create Manual Draft Record</strong>
+        <form id="asset-create-form" class="workspace-subsection">
+          <div class="subsection-head">
+            <div>
+              <strong>Create Draft Asset</strong>
+              <p>Add metadata first when the real source file is not ready yet.</p>
+            </div>
+            <span class="summary-chip" data-status="draft">Draft</span>
+          </div>
           <div class="field-grid">
             <label>
               Filename
-              <input type="text" name="originalFilename" placeholder="cover-art.png" autocomplete="off" required />
+              <input id="asset-create-original-filename" type="text" name="originalFilename" placeholder="cover-art.png" autocomplete="off" required />
             </label>
             <label>
               Content Type
-              <input type="text" name="contentType" placeholder="image/png" autocomplete="off" required />
+              <input id="asset-create-content-type" type="text" name="contentType" placeholder="image/png" autocomplete="off" required />
             </label>
             <label>
               Size In Bytes
-              <input type="number" name="byteSize" min="0" step="1" value="0" autocomplete="off" required />
+              <input id="asset-create-byte-size" type="number" name="byteSize" min="0" step="1" value="0" autocomplete="off" required />
             </label>
             <label>
               Kind
-              <select name="kind">
+              <select id="asset-create-kind" name="kind">
                 \${assetKinds
                   .map((kind) => \`<option value="\${kind}">\${kind}</option>\`)
                   .join("")}
@@ -702,7 +770,7 @@ export const workspaceViewModuleSource = `
             </label>
             <label>
               Initial Status
-              <select name="status">
+              <select id="asset-create-status" name="status">
                 \${assetLifecycleStatuses
                   .map(
                     (status) => \`
@@ -714,33 +782,28 @@ export const workspaceViewModuleSource = `
             </label>
           </div>
           <div class="form-actions">
-            <button class="primary-button" type="submit">Add Asset Record</button>
+            <button class="primary-button" type="submit">Add Draft Asset</button>
           </div>
         </form>
       \`;
     }
 
     function renderAssetsListSection() {
-      if (!state.selectedProject) {
-        return "";
-      }
-
       return \`
-        \${state.assetsBusy ? '<p class="muted-note">Refreshing asset inventory...</p>' : ""}
-        \${renderAssetList()}
+        <div id="projects-right-assets-refresh-slot"></div>
+        <div id="projects-right-assets-body-slot">
+          <div id="projects-right-assets-empty-state-slot"></div>
+          <div id="projects-right-assets-items-container" class="asset-list"></div>
+        </div>
       \`;
     }
 
     function renderAssetsPagination() {
-      if (!state.selectedProject) {
-        return "";
-      }
-
       return \`
         <div class="pagination">
-          <button class="ghost-button" type="button" data-pagination-target="assets" data-direction="prev" \${!state.assets || state.assetPage <= 1 ? "disabled" : ""}>Previous</button>
-          <span class="muted-note">Page \${state.assetPage} of \${state.assets?.totalPages ?? 1}</span>
-          <button class="ghost-button" type="button" data-pagination-target="assets" data-direction="next" \${!state.assets || state.assetPage >= state.assets.totalPages ? "disabled" : ""}>Next</button>
+          <button id="assets-pagination-prev-button" class="ghost-button" type="button" data-pagination-target="assets" data-direction="prev">Previous</button>
+          <span id="assets-pagination-label" class="muted-note">Page 1 of 1</span>
+          <button id="assets-pagination-next-button" class="ghost-button" type="button" data-pagination-target="assets" data-direction="next">Next</button>
         </div>
       \`;
     }

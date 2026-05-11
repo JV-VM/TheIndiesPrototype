@@ -18,6 +18,7 @@ COPY apps ./apps
 COPY packages ./packages
 
 RUN pnpm install --frozen-lockfile
+RUN pnpm --filter @tip/shared build
 RUN pnpm --filter @tip/contracts build
 RUN pnpm --filter @tip/types build
 RUN pnpm --filter @tip/api prisma:generate
