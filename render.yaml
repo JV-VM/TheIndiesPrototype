@@ -129,8 +129,8 @@ services:
     name: theindiesprototype-minio
     plan: starter
     image:
-      url: quay.io/minio/minio:latest
-    dockerCommand: server /data --address ":10000" --console-address ":10001"
+      url: docker.io/minio/minio:latest
+    dockerCommand: minio server /data --address "0.0.0.0:10000" --console-address "0.0.0.0:10001"
     disk:
       name: minio-data
       mountPath: /data
