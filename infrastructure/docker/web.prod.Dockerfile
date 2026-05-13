@@ -18,6 +18,7 @@ COPY apps ./apps
 COPY packages ./packages
 
 RUN pnpm install --frozen-lockfile
+RUN pnpm --filter @tip/api prisma:generate
 RUN pnpm build
 
 FROM node:22-bookworm-slim AS runtime
