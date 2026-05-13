@@ -7,8 +7,11 @@ import { renderPage } from "./app.js";
 
 const port = Number.parseInt(process.env.PORT ?? "3000", 10);
 const apiBaseUrl = process.env.TIP_API_BASE_URL ?? "http://localhost:13001";
-const apiInternalUrl =
-  process.env.TIP_API_INTERNAL_URL ?? "http://localhost:13001";
+const apiInternalUrl = readHttpUrl(
+  "TIP_API_INTERNAL_URL",
+  "TIP_API_INTERNAL_HOSTPORT",
+  "http://localhost:13001"
+);
 const wsBaseUrl = process.env.TIP_WS_BASE_URL ?? "ws://localhost:13001";
 const logger = createLogger("tip-web", {
   runtime: "web"
@@ -146,4 +149,22 @@ function sendJson(
     "x-request-id": requestId
   });
   response.end(JSON.stringify(payload, null, 2));
+}
+
+function readHttpUrl(
+  urlVariableName: string,
+  hostPortVariableName: string,
+  fallback: string
+): string {
+  const explicitUrl = process.env[urlVariableName];
+  if (explicitUrl) {
+    return explicitUrl;
+  }
+
+  const hostPort = process.env[hostPortVariableName];
+  if (hostPort) {
+    return `http://${hostPort}`;
+  }
+
+  return fallback;
 }

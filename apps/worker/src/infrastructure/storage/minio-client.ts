@@ -1,4 +1,5 @@
 import {
+  CreateBucketCommand,
   GetObjectCommand,
   ListBucketsCommand,
   PutObjectCommand,
@@ -86,13 +87,17 @@ export class WorkerMinioClient {
         (bucket) => bucket.Name === this.bucket
       );
 
+      if (!bucketExists) {
+        await createBucketIfMissing(this.client, this.bucket);
+      }
+
       return {
         name: "minio",
-        status: bucketExists ? "healthy" : "unhealthy",
+        status: "healthy",
         latencyMs: Math.round(performance.now() - startedAt),
         details: bucketExists
           ? `Bucket "${this.bucket}" is reachable.`
-          : `Bucket "${this.bucket}" was not found.`
+          : `Bucket "${this.bucket}" was created.`
       };
     } catch (error: unknown) {
       return {
@@ -104,4 +109,33 @@ export class WorkerMinioClient {
       };
     }
   }
+}
+
+async function createBucketIfMissing(
+  client: S3Client,
+  bucket: string
+): Promise<void> {
+  try {
+    await client.send(
+      new CreateBucketCommand({
+        Bucket: bucket
+      })
+    );
+  } catch (error) {
+    if (isBucketAlreadyAvailable(error)) {
+      return;
+    }
+
+    throw error;
+  }
+}
+
+function isBucketAlreadyAvailable(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  return ["BucketAlreadyExists", "BucketAlreadyOwnedByYou"].includes(
+    error.name
+  );
 }

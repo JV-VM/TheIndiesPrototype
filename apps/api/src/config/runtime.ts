@@ -58,6 +58,24 @@ function readNumber(name: string, fallback: number): number {
   return parsed;
 }
 
+function readHttpUrl(
+  urlVariableName: string,
+  hostPortVariableName: string,
+  fallback: string
+): string {
+  const explicitUrl = process.env[urlVariableName];
+  if (explicitUrl) {
+    return explicitUrl;
+  }
+
+  const hostPort = process.env[hostPortVariableName];
+  if (hostPort) {
+    return `http://${hostPort}`;
+  }
+
+  return fallback;
+}
+
 export function readRuntimeConfig(): RuntimeConfig {
   const nodeEnv = readString("NODE_ENV", "development");
 
@@ -72,7 +90,11 @@ export function readRuntimeConfig(): RuntimeConfig {
       "postgresql://tip:tip@localhost:5432/tip"
     ),
     redisUrl: readString("REDIS_URL", "redis://localhost:6379"),
-    minioEndpoint: readString("MINIO_ENDPOINT", "http://localhost:9000"),
+    minioEndpoint: readHttpUrl(
+      "MINIO_ENDPOINT",
+      "MINIO_HOSTPORT",
+      "http://localhost:9000"
+    ),
     minioRegion: readString("MINIO_REGION", "us-east-1"),
     minioBucket: readString("MINIO_BUCKET", "tip-assets"),
     minioAccessKey: readString("MINIO_ACCESS_KEY", "tipminio"),

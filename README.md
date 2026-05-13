@@ -33,6 +33,7 @@ Phase 9 deployment readiness is in place:
 - production Dockerfiles for web, API, and worker
 - Nginx reverse-proxy routing for `/`, `/api/*`, and `/api/realtime`
 - a production Docker Compose stack and deployment helper scripts for a single-host VPS target
+- a Render Blueprint for web, API, worker, Postgres, Key Value, and disk-backed MinIO
 - production environment templates and a release checklist
 
 ## Commands
@@ -83,6 +84,14 @@ pnpm release:check
 bash scripts/deploy-production.sh .env.production
 ```
 
+Render bootstrap:
+
+```bash
+pnpm release:check
+```
+
+Then create or sync a Render Blueprint instance from `render.yaml`.
+
 ## Docker Stack
 
 ```bash
@@ -118,7 +127,7 @@ Seeded demo workspace data:
 Phase 6 processing currently supports uploaded image assets and generates one thumbnail derivative per queued job.
 Phase 7 adds live job-state delivery, reconnect-driven resynchronization, and polling fallback when the socket is unavailable.
 Phase 8 adds structured logs, request IDs, readiness coverage for every runtime, CI quality gates, and an operational runbook.
-Phase 9 adds production images, reverse-proxy routing, a VPS deployment baseline, and a release checklist.
+Phase 9 adds production images, reverse-proxy routing, a VPS deployment baseline, a Render Blueprint baseline, and a release checklist.
 
 ## Documentation
 
