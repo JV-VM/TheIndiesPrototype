@@ -26,6 +26,7 @@ Phase 9 deployment readiness is in place:
 - worker-side Sharp thumbnail generation with derived outputs stored back in MinIO
 - Redis pub/sub fan-out from the worker and API into authenticated WebSocket delivery
 - browser-facing workspace shell with sign-in, session restore, projects, drag-and-drop upload, queue controls, retry actions, live delivery status, and derived-output download
+- Angular frontend foundation served by `tip-web` at `/frontend-foundation` with standalone app routing, modular SCSS tokens, auth session recovery, protected shell routes, project/assets/jobs/realtime slices, and hardened loading/error UX
 - structured JSON logs across web, API, and worker with traceable request and job identifiers
 - web, API, and worker health/readiness endpoints plus Docker health checks for all runtime services
 - GitHub Actions CI for build, lint, typecheck, test, and Docker-backed smoke verification
@@ -126,6 +127,7 @@ Seeded demo workspace data:
 
 Phase 6 processing currently supports uploaded image assets and generates one thumbnail derivative per queued job.
 Phase 7 adds live job-state delivery, reconnect-driven resynchronization, and polling fallback when the socket is unavailable.
+The Angular frontend now completes its own delivery path with realtime-aware UI updates, responsive loading states, package-level tests, and architecture notes.
 Phase 8 adds structured logs, request IDs, readiness coverage for every runtime, CI quality gates, and an operational runbook.
 Phase 9 adds production images, reverse-proxy routing, a VPS deployment baseline, a Render Blueprint baseline, and a release checklist.
 
@@ -134,6 +136,7 @@ Phase 9 adds production images, reverse-proxy routing, a VPS deployment baseline
 - [Project Scope](./theindiesprototype_scope.md)
 - [Roadmap](./docs/roadmap.md)
 - [Architecture](./docs/architecture.md)
+- [Frontend Architecture](./docs/frontend-architecture.md)
 - [Setup](./docs/setup.md)
 - [Deployment](./docs/deployment.md)
 - [Decisions](./docs/decisions.md)

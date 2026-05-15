@@ -1,0 +1,129 @@
+.sidebar {
+  padding: 1.5rem;
+  border: 1px solid var(--tip-line);
+  border-radius: var(--tip-radius-lg);
+  background:
+    linear-gradient(180deg, rgba(8, 18, 31, 0.96), rgba(5, 14, 24, 0.94)),
+    var(--tip-panel);
+  box-shadow: var(--tip-shadow-deep);
+  display: grid;
+  gap: 1.5rem;
+  align-self: start;
+  position: sticky;
+  top: 1rem;
+}
+
+.brand-block {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.brand-block h1 {
+  font-size: clamp(2rem, 5vw, 3.5rem);
+  line-height: 0.9;
+}
+
+.brand-block p {
+  color: var(--tip-muted);
+  line-height: 1.65;
+}
+
+.eyebrow,
+.mini-label,
+.mini-pill {
+  width: fit-content;
+  border-radius: 999px;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  font-size: 0.7rem;
+}
+
+.eyebrow,
+.mini-label {
+  padding: 0.55rem 0.75rem;
+  border: 1px solid rgba(141, 229, 191, 0.24);
+  background: rgba(98, 210, 162, 0.12);
+  color: var(--tip-accent-strong);
+}
+
+.mini-pill {
+  padding: 0.45rem 0.7rem;
+  background: rgba(108, 180, 255, 0.14);
+  color: #a8d0ff;
+}
+
+.nav-list {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.nav-item {
+  padding: 0.95rem 1rem;
+  border-radius: var(--tip-radius-md);
+  border: 1px solid transparent;
+  background: rgba(14, 28, 41, 0.72);
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  transition:
+    border-color 160ms ease,
+    transform 160ms ease,
+    background-color 160ms ease;
+}
+
+.nav-item span {
+  font-weight: 600;
+}
+
+.nav-item small {
+  color: var(--tip-muted);
+}
+
+.nav-item:hover,
+.nav-item-active {
+  transform: translateY(-1px);
+  border-color: rgba(108, 180, 255, 0.28);
+  background: rgba(16, 33, 49, 0.92);
+}
+
+.track-panel {
+  display: grid;
+  gap: 0.9rem;
+}
+
+.track-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.track-grid {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.track-card {
+  padding: 0.9rem 1rem;
+  border-radius: var(--tip-radius-md);
+  border: 1px solid var(--tip-line);
+  background: rgba(12, 25, 38, 0.78);
+}
+
+.track-card strong {
+  display: block;
+  margin-bottom: 0.25rem;
+  font-size: 0.85rem;
+}
+
+.track-card p {
+  color: var(--tip-muted);
+  font-size: 0.95rem;
+  line-height: 1.5;
+}
+
+@media (max-width: 1040px) {
+  .sidebar {
+    position: static;
+  }
+}

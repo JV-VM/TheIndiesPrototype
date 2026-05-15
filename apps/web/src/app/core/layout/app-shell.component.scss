@@ -1,0 +1,28 @@
+:host {
+  display: block;
+}
+
+.shell-frame {
+  width: min(var(--tip-content-width), calc(100% - 2rem));
+  margin: 0 auto;
+  padding: 1.5rem 0 2rem;
+  display: grid;
+  grid-template-columns: 286px minmax(0, 1fr);
+  gap: 1.25rem;
+}
+
+.shell-main {
+  min-width: 0;
+  display: grid;
+  gap: 1rem;
+}
+
+.shell-content {
+  min-width: 0;
+}
+
+@media (max-width: 1040px) {
+  .shell-frame {
+    grid-template-columns: 1fr;
+  }
+}

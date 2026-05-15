@@ -1,0 +1,17 @@
+.empty-state {
+  padding: 1.2rem;
+  border-radius: var(--tip-radius-md);
+  border: 1px dashed rgba(145, 163, 184, 0.26);
+  background: rgba(12, 25, 38, 0.6);
+  display: grid;
+  gap: 0.7rem;
+}
+
+.empty-state strong {
+  font-size: 1rem;
+}
+
+.empty-state p {
+  color: var(--tip-muted);
+  line-height: 1.6;
+}

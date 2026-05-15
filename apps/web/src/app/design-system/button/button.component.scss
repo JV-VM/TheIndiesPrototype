@@ -1,0 +1,42 @@
+:host {
+  display: inline-block;
+}
+
+.tip-button {
+  border: 1px solid transparent;
+  border-radius: 999px;
+  padding: 0.75rem 1.05rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    transform 160ms ease,
+    border-color 160ms ease,
+    background-color 160ms ease,
+    color 160ms ease;
+}
+
+.tip-button:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+.tip-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.62;
+}
+
+.tip-button.primary {
+  background: linear-gradient(135deg, #63d6a5, #7abdfb);
+  color: #041019;
+}
+
+.tip-button.secondary {
+  background: rgba(108, 180, 255, 0.14);
+  border-color: rgba(108, 180, 255, 0.24);
+  color: var(--tip-ink);
+}
+
+.tip-button.ghost {
+  background: transparent;
+  border-color: var(--tip-line);
+  color: var(--tip-ink-soft);
+}

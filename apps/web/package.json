@@ -4,16 +4,35 @@
   "private": true,
   "type": "module",
   "dependencies": {
+    "@angular/common": "^21.0.0",
+    "@angular/compiler": "^21.0.0",
+    "@angular/core": "^21.0.0",
+    "@angular/forms": "^21.0.0",
+    "@angular/platform-browser": "^21.0.0",
+    "@angular/router": "^21.0.0",
     "@tip/contracts": "workspace:*",
     "@tip/shared": "workspace:*",
-    "@tip/types": "workspace:*"
+    "@tip/types": "workspace:*",
+    "rxjs": "^7.8.1",
+    "tslib": "^2.8.1",
+    "zone.js": "^0.15.0"
   },
   "scripts": {
     "dev": "node --import tsx src/dev-server.ts",
-    "start": "node dist/dev-server.js",
-    "build": "tsc -p tsconfig.json",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "dev:foundation": "ng build --configuration development --watch",
+    "start": "node dist/server/dev-server.js",
+    "build": "pnpm run build:foundation && pnpm run build:server",
+    "build:foundation": "ng build",
+    "build:server": "tsc -p tsconfig.server.json",
+    "typecheck": "tsc -p tsconfig.app.json --noEmit && tsc -p tsconfig.server.json --noEmit",
     "lint": "eslint \"src/**/*.ts\"",
-    "clean": "rm -rf dist"
+    "test": "node --import tsx --test test/*.test.ts",
+    "clean": "rm -rf dist .angular"
+  },
+  "devDependencies": {
+    "@angular-devkit/build-angular": "^21.0.0",
+    "@angular/cli": "^21.0.0",
+    "@angular/compiler-cli": "^21.0.0",
+    "sass": "^1.89.0"
   }
 }

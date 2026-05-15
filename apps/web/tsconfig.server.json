@@ -1,0 +1,17 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "dist/server",
+    "rootDir": "src",
+    "lib": ["ES2022", "DOM"],
+    "declaration": false
+  },
+  "include": [
+    "src/api-client.ts",
+    "src/app.ts",
+    "src/browser-script.ts",
+    "src/dev-server.ts",
+    "src/browser/**/*.ts",
+    "src/features/**/*.ts"
+  ]
+}

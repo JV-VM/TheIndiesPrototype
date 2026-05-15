@@ -1,4 +1,7 @@
 import { createServer } from "node:http";
+import { access, readFile } from "node:fs/promises";
+import { extname, join, normalize } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { createCorrelationId, createLogger } from "@tip/shared";
 
@@ -13,6 +16,9 @@ const apiInternalUrl = readHttpUrl(
   "http://localhost:13001"
 );
 const wsBaseUrl = process.env.TIP_WS_BASE_URL ?? "ws://localhost:13001";
+const frontendFoundationBasePath = "/frontend-foundation";
+const appRootDirectory = fileURLToPath(new URL("../..", import.meta.url));
+const browserBuildDirectory = join(appRootDirectory, "dist", "browser");
 const logger = createLogger("tip-web", {
   runtime: "web"
 });
@@ -77,6 +83,11 @@ const server = createServer((request, response) => {
 
   if (url.pathname === "/ready") {
     void sendReadinessResponse(response, requestId, requestLogger);
+    return;
+  }
+
+  if (isFrontendFoundationRequest(url.pathname)) {
+    void sendFrontendFoundationResponse(response, requestId, url.pathname);
     return;
   }
 
@@ -167,4 +178,139 @@ function readHttpUrl(
   }
 
   return fallback;
+}
+
+function isFrontendFoundationRequest(pathname: string): boolean {
+  return (
+    pathname === frontendFoundationBasePath ||
+    pathname.startsWith(`${frontendFoundationBasePath}/`)
+  );
+}
+
+async function sendFrontendFoundationResponse(
+  response: import("node:http").ServerResponse,
+  requestId: string,
+  pathname: string
+): Promise<void> {
+  const relativePath = pathname
+    .slice(frontendFoundationBasePath.length)
+    .replace(/^\/+/, "");
+
+  const shouldServeIndex =
+    relativePath.length === 0 || (!relativePath.includes(".") && !pathname.endsWith(".js"));
+
+  const candidatePath = normalize(join(browserBuildDirectory, relativePath));
+  const isWithinBrowserBuild =
+    candidatePath === browserBuildDirectory ||
+    candidatePath.startsWith(`${browserBuildDirectory}/`);
+
+  if (!isWithinBrowserBuild) {
+    response.writeHead(404, {
+      "content-type": "text/plain; charset=utf-8",
+      "x-request-id": requestId
+    });
+    response.end("Not found.");
+    return;
+  }
+
+  if (!shouldServeIndex) {
+    const assetBuffer = await readStaticFile(candidatePath);
+
+    if (assetBuffer) {
+      response.writeHead(200, {
+        "content-type": contentTypeForPath(candidatePath),
+        "cache-control": "public, max-age=31536000, immutable",
+        "x-content-type-options": "nosniff",
+        "referrer-policy": "no-referrer",
+        "x-request-id": requestId
+      });
+      response.end(assetBuffer);
+      return;
+    }
+  }
+
+  const indexFilePath = join(browserBuildDirectory, "index.html");
+  const indexHtml = await readStaticTextFile(indexFilePath);
+
+  if (!indexHtml) {
+    response.writeHead(503, {
+      "content-type": "text/html; charset=utf-8",
+      "cache-control": "no-store",
+      "x-request-id": requestId
+    });
+    response.end(`<!doctype html>
+<html lang="en">
+  <body style="font-family: sans-serif; background: #06111d; color: #f3f7fb; padding: 32px;">
+    <h1>Frontend foundation build not found.</h1>
+    <p>Run <code>pnpm --filter @tip/web build</code> to generate the Angular Phase 0 and Phase 1 assets.</p>
+  </body>
+</html>`);
+    return;
+  }
+
+  response.writeHead(200, {
+    "content-type": "text/html; charset=utf-8",
+    "cache-control": "no-store",
+    "x-content-type-options": "nosniff",
+    "referrer-policy": "no-referrer",
+    "content-security-policy": contentSecurityPolicy,
+    "x-frame-options": "DENY",
+    "x-request-id": requestId
+  });
+  response.end(injectFrontendRuntimeConfig(indexHtml));
+}
+
+async function readStaticFile(
+  filePath: string,
+  encoding?: BufferEncoding
+): Promise<Buffer | string | null> {
+  try {
+    await access(filePath);
+    return await readFile(filePath, encoding ? { encoding } : undefined);
+  } catch {
+    return null;
+  }
+}
+
+async function readStaticTextFile(filePath: string): Promise<string | null> {
+  const file = await readStaticFile(filePath, "utf8");
+
+  return typeof file === "string" ? file : null;
+}
+
+function injectFrontendRuntimeConfig(indexHtml: string): string {
+  const runtimeConfig = JSON.stringify({
+    apiBaseUrl,
+    wsBaseUrl,
+    foundationBasePath: frontendFoundationBasePath
+  }).replace(/</g, "\\u003c");
+
+  return indexHtml.replace(
+    "</head>",
+    `<script>window.__TIP_FRONTEND_CONFIG__=${runtimeConfig};</script></head>`
+  );
+}
+
+function contentTypeForPath(pathname: string): string {
+  switch (extname(pathname)) {
+    case ".css":
+      return "text/css; charset=utf-8";
+    case ".js":
+      return "text/javascript; charset=utf-8";
+    case ".json":
+      return "application/json; charset=utf-8";
+    case ".svg":
+      return "image/svg+xml";
+    case ".png":
+      return "image/png";
+    case ".jpg":
+    case ".jpeg":
+      return "image/jpeg";
+    case ".woff2":
+      return "font/woff2";
+    case ".ico":
+      return "image/x-icon";
+    default:
+      return "application/octet-stream";
+  }
 }

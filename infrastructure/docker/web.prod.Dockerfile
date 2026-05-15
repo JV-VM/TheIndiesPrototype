@@ -44,4 +44,4 @@ EXPOSE 3000
 
 USER node
 
-CMD ["node", "apps/web/dist/dev-server.js"]
+CMD ["node", "apps/web/dist/server/dev-server.js"]

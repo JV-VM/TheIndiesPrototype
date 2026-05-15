@@ -129,7 +129,7 @@ Production deployment preserves this as one process and one image: `tip-worker`.
 
 ## Current State
 
-The repo still uses lightweight Node placeholder application servers instead of Angular and NestJS implementations. That remains intentional. The current baseline now combines real infrastructure with the first real authenticated domain workflow:
+The repo still uses lightweight Node placeholder application servers instead of a full Angular and NestJS replacement at the public entrypoints. That remains intentional. Phase 0 and Phase 1 of the frontend integration now add a real Angular foundation under `/frontend-foundation` while the existing root workspace flow remains live until later feature slices migrate. The current baseline now combines real infrastructure with the first real authenticated domain workflow:
 
 - Prisma schema and migrations in `apps/api/prisma`
 - PostgreSQL persistence model for users, sessions, projects, assets, and jobs
@@ -146,6 +146,7 @@ The repo still uses lightweight Node placeholder application servers instead of 
 - authenticated WebSocket sessions on `/realtime` with user-scoped project subscriptions
 - worker and API event publishing for `job.updated` and `notification.created`
 - frontend shell state that restores sessions through the auth API, reconciles project/job state after socket reconnects, and falls back to polling when the socket is unavailable
+- Angular standalone frontend foundation in `apps/web/src/app` with modular SCSS tokens, route guards, auth session restore, project/assets/jobs/realtime slices, incremental socket-driven UI updates, reusable UI primitives, and protected routes served by the existing `tip-web` runtime at `/frontend-foundation`
 - structured JSON logging in the web, API, and worker runtimes
 - `x-request-id` correlation in API responses and request-completion logs
 - health and readiness endpoints for web, API, and worker so Docker and operators can distinguish process liveness from dependency readiness
