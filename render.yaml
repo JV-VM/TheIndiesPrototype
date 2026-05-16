@@ -33,7 +33,7 @@ services:
     dockerContext: .
     autoDeployTrigger: commit
     healthCheckPath: /ready
-    preDeployCommand: corepack pnpm --filter @tip/api prisma:migrate:deploy
+    preDeployCommand: corepack pnpm --filter @tip/api prisma:migrate:deploy && corepack pnpm --filter @tip/api prisma:seed
     envVars:
       - key: NODE_ENV
         value: production
