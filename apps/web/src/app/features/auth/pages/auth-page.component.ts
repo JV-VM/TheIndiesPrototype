@@ -1,6 +1,6 @@
 import { ChangeDetectionStrategy, Component, inject, signal } from "@angular/core";
 import { ReactiveFormsModule, FormBuilder, Validators } from "@angular/forms";
-import { Router } from "@angular/router";
+import { Router, RouterLink } from "@angular/router";
 
 import { AuthService } from "../../../core/auth/auth.service";
 import { ApiError } from "../../../core/http/api-error";
@@ -14,6 +14,7 @@ import { NoticeBannerComponent } from "../../../shared/components/notice-banner.
   standalone: true,
   imports: [
     ReactiveFormsModule,
+    RouterLink,
     ButtonComponent,
     CardComponent,
     NoticeBannerComponent
@@ -21,26 +22,26 @@ import { NoticeBannerComponent } from "../../../shared/components/notice-banner.
   template: `
     <main class="auth-shell">
       <section class="hero-panel">
-        <span class="eyebrow">Phase 3 Auth Integration</span>
-        <h1>Restore sessions, protect routes, and enter the workspace with the real API.</h1>
+        <span class="eyebrow">Manual sign in</span>
+        <h1>Use credentials only if you need a non-demo path.</h1>
         <p>
-          The Angular frontend uses the existing register, login, refresh, logout, and profile
-          routes. Refresh cookies stay server-owned, while access tokens recover the workspace
-          without a manual reload.
+          The preferred reviewer flow is still the seeded demo workspace. This page exists for
+          manual access against the live auth API when you want to inspect the standard sign-in
+          path directly.
         </p>
 
         <div class="hero-grid">
           <article class="hero-stat">
-            <strong>Auth boundary</strong>
-            <p>Route guards keep the shell private until session recovery finishes.</p>
+            <strong>Same backend</strong>
+            <p>Login, refresh, logout, and profile recovery run against the deployed API.</p>
           </article>
           <article class="hero-stat">
             <strong>Session model</strong>
-            <p>Short-lived access token plus rotating refresh cookie, matching the current backend design.</p>
+            <p>Short-lived access tokens pair with rotating refresh cookies for shell recovery.</p>
           </article>
           <article class="hero-stat">
-            <strong>Next slice</strong>
-            <p>Projects load immediately after successful authentication inside the protected shell.</p>
+            <strong>Demo first</strong>
+            <p>If you only want the product walkthrough, go back and enter demo mode instead.</p>
           </article>
         </div>
       </section>
@@ -48,27 +49,8 @@ import { NoticeBannerComponent } from "../../../shared/components/notice-banner.
       <tip-card class="auth-card" variant="accent">
         <div class="auth-card-copy">
           <span class="mini-label">Workspace Access</span>
-          <h2>{{ mode() === 'signin' ? 'Sign in' : 'Create an account' }}</h2>
-          <p>Use the live API. Passwords must have at least eight characters.</p>
-        </div>
-
-        <div class="mode-switch">
-          <button
-            class="mode-button"
-            type="button"
-            [attr.data-active]="mode() === 'signin'"
-            (click)="setMode('signin')"
-          >
-            Sign In
-          </button>
-          <button
-            class="mode-button"
-            type="button"
-            [attr.data-active]="mode() === 'signup'"
-            (click)="setMode('signup')"
-          >
-            Register
-          </button>
+          <h2>Sign in</h2>
+          <p>Use the live API, or skip the form and open the seeded demo workspace directly.</p>
         </div>
 
         <tip-notice-banner />
@@ -84,17 +66,19 @@ import { NoticeBannerComponent } from "../../../shared/components/notice-banner.
             <input
               type="password"
               formControlName="password"
-              [attr.autocomplete]="mode() === 'signup' ? 'new-password' : 'current-password'"
+              autocomplete="current-password"
             />
           </label>
 
           <tip-button [disabled]="busy() || form.invalid" buttonType="submit">
-            {{ busy() ? 'Working...' : mode() === 'signin' ? 'Sign In And Enter' : 'Register And Enter' }}
+            {{ busy() ? 'Working...' : 'Sign in and enter' }}
           </tip-button>
 
           <tip-button variant="secondary" [disabled]="busy()" buttonType="button" (click)="openDemoWorkspace()">
-            {{ busy() ? 'Opening...' : 'Open demo workspace' }}
+            {{ busy() ? 'Opening...' : 'Enter demo mode' }}
           </tip-button>
+
+          <a class="back-link" routerLink="/">Back to public page</a>
         </form>
       </tip-card>
     </main>
@@ -108,17 +92,11 @@ export class AuthPageComponent {
   private readonly noticeService = inject(NoticeService);
   private readonly router = inject(Router);
 
-  protected readonly mode = signal<"signin" | "signup">("signin");
   protected readonly busy = signal(false);
   protected readonly form = this.formBuilder.nonNullable.group({
     email: ["", [Validators.required, Validators.email]],
     password: ["", [Validators.required, Validators.minLength(8)]]
   });
-
-  protected setMode(mode: "signin" | "signup"): void {
-    this.mode.set(mode);
-    this.noticeService.clear();
-  }
 
   protected async submit(): Promise<void> {
     if (this.form.invalid) {
@@ -131,13 +109,7 @@ export class AuthPageComponent {
 
     try {
       const payload = this.form.getRawValue();
-
-      if (this.mode() === "signin") {
-        await this.authService.login(payload);
-      } else {
-        await this.authService.register(payload);
-      }
-
+      await this.authService.login(payload);
       await this.router.navigateByUrl("/dashboard");
     } catch (error) {
       this.noticeService.setDanger(this.errorMessage(error));

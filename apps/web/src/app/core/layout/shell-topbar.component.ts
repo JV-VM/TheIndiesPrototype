@@ -18,12 +18,12 @@ interface SignalChip {
     <header class="topbar">
       <div class="headline-row">
         <div class="copy-block">
-          <span class="phase-chip">Phases 0 to 10</span>
+          <span class="phase-chip">Demo workspace</span>
           <div>
-            <h2>Angular workspace integrated across auth, assets, jobs, and realtime</h2>
+            <h2>Inspect the protected workflow across auth, ingestion, jobs, realtime, and storage</h2>
             <p>
-              The protected shell now owns the core creator workflow while the
-              legacy root flow stays available during the migration window.
+              This shell is the live product surface behind the public landing page,
+              not a mock walkthrough. Use it to inspect how the system behaves after login.
             </p>
           </div>
         </div>
@@ -53,7 +53,7 @@ export class ShellTopbarComponent {
   protected get signalChips(): SignalChip[] {
     return [
       {
-        label: "Legacy workspace",
+        label: "Public entry",
         value: "/"
       },
       {
@@ -69,8 +69,8 @@ export class ShellTopbarComponent {
         value: String(this.realtimeService.notifications().length)
       },
       {
-        label: "Migration route",
-        value: "/frontend-foundation"
+        label: "Workspace route",
+        value: "/dashboard"
       }
     ];
   }

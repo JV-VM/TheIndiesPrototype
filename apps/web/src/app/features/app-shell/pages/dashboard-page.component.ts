@@ -52,12 +52,12 @@ interface SliceCard {
   template: `
     <div class="dashboard">
       <tip-page-header
-        eyebrow="Protected Shell"
-        title="The Angular client now restores the session and owns the project workspace entrypoint."
-        description="This dashboard now runs behind real route protection and reads live project state. Later slices can attach assets, jobs, and realtime delivery without replacing the shell again."
+        eyebrow="Protected workspace"
+        title="A real seeded workspace for inspecting asset ingestion, async processing, and realtime delivery."
+        description="Use this dashboard as the technical walkthrough after entering demo mode. It summarizes the system shape, live operational scope, and where to inspect the implemented architecture next."
       >
         <tip-button (click)="goToProjects()">Open projects workspace</tip-button>
-        <tip-button variant="ghost">Legacy workspace still stays at /</tip-button>
+        <tip-button variant="ghost" (click)="goToJobs()">Open live queue</tip-button>
       </tip-page-header>
 
       <section class="stats-grid">
@@ -78,10 +78,10 @@ interface SliceCard {
         <tip-card variant="signal" class="panel panel-large">
           <div class="panel-header">
             <div>
-              <span class="section-label">Delivery Model</span>
-              <h3>Frontend integration phases</h3>
+              <span class="section-label">Architecture highlights</span>
+              <h3>How the system is composed</h3>
             </div>
-            <tip-status-pill label="Non-breaking rollout" tone="signal" />
+            <tip-status-pill label="Implemented in repo" tone="signal" />
           </div>
 
           <div class="pipeline-grid">
@@ -96,10 +96,10 @@ interface SliceCard {
         <tip-card class="panel">
           <div class="panel-header">
             <div>
-              <span class="section-label">Architecture</span>
-              <h3>Feature slice map</h3>
+              <span class="section-label">System lanes</span>
+              <h3>Where each concern lives</h3>
             </div>
-            <tip-status-pill label="Matches docs/architecture" tone="success" />
+            <tip-status-pill label="Matches deployed flow" tone="success" />
           </div>
 
           <div class="slice-grid">
@@ -116,29 +116,29 @@ interface SliceCard {
         <tip-card class="panel">
           <div class="panel-header">
             <div>
-              <span class="section-label">Useful Empty States</span>
-              <h3>Portfolio-safe placeholders</h3>
+              <span class="section-label">Inspection paths</span>
+              <h3>What to open next</h3>
             </div>
           </div>
 
           <div class="empty-grid">
             <tip-empty-state
-              title="Projects now live in Angular"
-              description="Project listing, selection, search, pagination, and CRUD now run inside the protected shell with the current API."
+              title="Inspect project and asset state"
+              description="Open the projects workspace to review seeded records, asset metadata, upload flow, and how queue handoff starts from a project context."
               actionLabel="Open projects workspace"
               (action)="goToProjects()"
             />
             <tip-empty-state
-              title="Assets now live in Angular"
-              description="Upload staging, drag and drop, draft asset creation, inventory filtering, source download, and queue handoff are all available inside the protected shell."
-              actionLabel="Open projects workspace"
-              (action)="goToProjects()"
-            />
-            <tip-empty-state
-              title="Realtime now live in Angular"
-              description="Socket authentication, project subscription, reconnect, notifications, and polling fallback now resync the Angular workspace."
+              title="Inspect queue execution"
+              description="Open the queue view to review job status breakdowns, retries, and derived output visibility after worker execution."
               actionLabel="Open jobs workspace"
               (action)="goToJobs()"
+            />
+            <tip-empty-state
+              title="Inspect realtime behavior"
+              description="Watch socket status, notifications, and live state transitions to verify that the UI stays synchronized with backend events."
+              actionLabel="Open projects workspace"
+              (action)="goToProjects()"
             />
           </div>
         </tip-card>
@@ -156,81 +156,53 @@ export class DashboardPageComponent implements OnInit {
 
   protected readonly pipelineStages: PipelineStage[] = [
     {
-      label: "Phase 0",
-      status: "Complete",
+      label: "Auth boundary",
+      status: "Live",
       summary:
-        "Angular build configuration, runtime config injection, and server/browser split are now first-class.",
+        "The workspace remains protected behind restored sessions, rotating refresh cookies, and route guards.",
       tone: "success"
     },
     {
-      label: "Phase 1",
-      status: "Complete",
+      label: "Asset ingestion",
+      status: "Live",
       summary:
-        "Dashboard route, shell layout, design tokens, and reusable components establish the base product language.",
+        "Uploads are validated by the API, persisted to object storage, and tracked as project-scoped asset records.",
       tone: "signal"
     },
     {
-      label: "Phase 2",
-      status: "Complete",
+      label: "Job orchestration",
+      status: "Live",
       summary:
-        "Core HTTP, route protection, runtime state, and error handling will connect Angular to the current API surface.",
-      tone: "warning"
-    },
-    {
-      label: "Phase 3",
-      status: "Complete",
-      summary:
-        "Register, sign in, refresh, logout, and session restore now work inside Angular with the current auth API.",
-      tone: "success"
-    },
-    {
-      label: "Phase 4",
-      status: "Complete",
-      summary:
-        "Project search, selection, pagination, create, update, and delete flows now live in the Angular workspace slice.",
+        "Processing work is queued durably, queried from the workspace, and retried when failures need another pass.",
       tone: "neutral"
     },
     {
-      label: "Phase 5",
-      status: "Complete",
+      label: "Worker execution",
+      status: "Live",
       summary:
-        "Asset inventory, uploads, draft creation, source downloads, and queue handoff now run in the Angular workspace.",
+        "A separate worker transforms queued assets and stores derived outputs back into persistent storage.",
       tone: "success"
     },
     {
-      label: "Phase 6",
-      status: "Complete",
+      label: "Realtime delivery",
+      status: "Live",
       summary:
-        "Queue filtering, retries, processed-thumbnail downloads, and jobs summaries now live in the Angular shell.",
-      tone: "signal"
-    },
-    {
-      label: "Phase 7",
-      status: "Complete",
-      summary:
-        "Realtime socket auth, project subscription, notifications, reconnect behavior, and polling fallback now keep the workspace synchronized.",
+        "Redis pub/sub fans backend events into authenticated WebSocket updates so the workspace reflects state changes quickly.",
       tone: "warning"
     },
     {
-      label: "Phase 8",
-      status: "Complete",
+      label: "Storage model",
+      status: "Live",
       summary:
-        "Realtime UX now updates queue and asset state incrementally, surfaces connection fallbacks clearly, and promotes important events into workspace notices.",
+        "Source files and processed outputs stay behind authenticated application flows instead of leaking direct bucket access.",
       tone: "success"
     },
     {
-      label: "Phase 9",
-      status: "Complete",
+      label: "Quality gates",
+      status: "Live",
       summary:
-        "Responsive behavior, shimmer loading states, formatted operational metadata, polished empty states, and motion/accessibility refinements now make the interface portfolio-ready.",
+        "Build, typecheck, tests, smoke coverage, Docker packaging, and deployment wiring are part of the delivery contract.",
       tone: "signal"
-    },
-    {
-      label: "Phase 10",
-      status: "Complete",
-      summary:
-        "Frontend delivery now includes a package test suite, a documented architecture note, and a release-friendly CI contract alongside build and dry-run verification.",
-      tone: "neutral"
     }
   ];
 
@@ -238,38 +210,38 @@ export class DashboardPageComponent implements OnInit {
     {
       label: "auth",
       summary:
-        "Session restore, login, logout, and route gating remain isolated from project and asset screens.",
-      nextStep: "Integrated with the existing auth API."
+        "Session restore, login, logout, and route gating stay isolated from project and asset screens.",
+      nextStep: "Inspect how demo mode and manual sign-in converge into the same protected shell."
     },
     {
       label: "projects",
       summary:
-        "Workspace selection and project CRUD stay a dedicated domain slice instead of leaking into shell concerns.",
-      nextStep: "Integrated with live project browsing and editing."
+        "Workspace selection, search, and CRUD stay a dedicated domain slice instead of leaking into shell concerns.",
+      nextStep: "Open Projects to inspect seeded records, editing, and project-scoped inventory."
     },
     {
       label: "assets",
       summary:
         "Upload, validation, metadata, and preview behaviors stay independent from job execution UI.",
-      nextStep: "Integrated with upload, draft creation, and source download."
+      nextStep: "Inspect upload staging, metadata drafts, and source download paths."
     },
     {
       label: "jobs",
       summary:
         "Queue states, retries, and derived-output visibility remain their own operational view.",
-      nextStep: "Integrated with filtering, retry, and thumbnail download."
+      nextStep: "Open Queue to inspect live status buckets and retry flows."
     },
     {
       label: "realtime",
       summary:
         "Socket delivery enhances the UI but does not become the source of truth.",
-      nextStep: "Integrated with reconnect-driven resync and fallback polling."
+      nextStep: "Watch the connection panel and notices while queue state changes propagate."
     },
     {
-      label: "shared-ui",
+      label: "delivery",
       summary:
-        "Design-system primitives can move into packages/ui once reuse justifies promotion.",
-      nextStep: "Hardening complete. Promote primitives only when a second surface needs them."
+        "Deployment, runtime config, smoke verification, and CI keep the demo reproducible beyond local-only conditions.",
+      nextStep: "Cross-check this surface with the public landing page and deployed Render routes."
     }
   ];
 
@@ -283,28 +255,28 @@ export class DashboardPageComponent implements OnInit {
         label: "Signed-in user",
         value: this.authService.user()?.email ?? "Unknown session",
         summary:
-          "Route protection and bootstrap recovery now decide whether the shell renders at all.",
+          "The protected shell is using a real restored session, including demo mode entry when applicable.",
         tone: "accent"
       },
       {
         label: "Projects in scope",
         value: String(this.workspaceService.totalProjects()),
         summary:
-          "The dashboard is now reading the live paginated project collection instead of static showcase data.",
+          "This count is read from the live workspace collection rather than hardcoded showcase content.",
         tone: "signal"
       },
       {
         label: "Queue items loaded",
         value: String(this.jobsWorkspaceService.collection()?.totalItems ?? 0),
         summary:
-          "The queue slice now exposes active, queued, failed, and completed work for the selected project.",
+          "Queue state exposes active, queued, failed, and completed work when a project context is selected.",
         tone: "default"
       },
       {
-        label: "Migration strategy",
-        value: "Hybrid rollout",
+        label: "Deployment target",
+        value: "Render + Docker",
         summary:
-          "The current workspace remains available while Angular pages replace it slice by slice.",
+          "The same workflow is shaped for deployed use with runtime config, health checks, and service boundaries.",
         tone: "accent"
       }
     ];

@@ -97,7 +97,7 @@ export class AuthService {
     this.noticeService.setNeutral("Session closed.");
 
     if (options?.redirectToAuth !== false) {
-      await this.router.navigateByUrl("/auth");
+      await this.router.navigateByUrl("/");
     }
   }
 
@@ -108,8 +108,8 @@ export class AuthService {
 
   async handleUnauthorized(): Promise<void> {
     this.clearSession();
-    this.noticeService.setNeutral("Session expired. Sign in again to continue.");
-    await this.router.navigateByUrl("/auth");
+    this.noticeService.setNeutral("Session expired. Sign in again or enter demo mode.");
+    await this.router.navigateByUrl("/");
   }
 
   private async restoreSession(): Promise<void> {
@@ -135,7 +135,7 @@ export class AuthService {
       if (!refreshedSession) {
         this.clearSession();
         this.noticeService.setNeutral(
-          "Sign in or register to enter the workspace shell."
+          "Enter demo mode or sign in to continue into the workspace."
         );
       }
     } catch (error) {

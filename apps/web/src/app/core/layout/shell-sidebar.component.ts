@@ -22,15 +22,15 @@ interface ModuleTrackItem {
   template: `
     <aside class="sidebar">
       <div class="brand-block">
-        <span class="eyebrow">Angular Foundation</span>
+        <span class="eyebrow">Processing workspace</span>
         <h1>TIP</h1>
         <p>
-          Phase 0 and Phase 1 establish the frontend shell, design tokens, and
-          reusable UI primitives without breaking the current workspace flow.
+          This protected shell is the operational view for projects, assets, jobs,
+          realtime delivery, and processed output retrieval.
         </p>
       </div>
 
-      <nav class="nav-list" aria-label="Foundation navigation">
+      <nav class="nav-list" aria-label="Workspace navigation">
         <a
           *ngFor="let item of navigationItems"
           class="nav-item"
@@ -44,7 +44,7 @@ interface ModuleTrackItem {
 
       <section class="track-panel">
         <div class="track-header">
-          <span class="mini-label">Module Track</span>
+          <span class="mini-label">System map</span>
           <span class="mini-pill">{{ workspaceService.totalProjects() }} projects</span>
         </div>
         <div class="track-grid">
@@ -65,44 +65,44 @@ export class ShellSidebarComponent {
     {
       label: "Dashboard",
       route: "/dashboard",
-      phase: "Operational summary"
+      phase: "Architecture summary"
     },
     {
       label: "Projects",
       route: "/projects",
-      phase: "Workspace CRUD"
+      phase: "Assets and metadata"
     },
     {
       label: "Queue",
       route: "/jobs",
-      phase: "Live processing"
+      phase: "Jobs and delivery"
     }
   ];
 
   protected readonly moduleTrack: ModuleTrackItem[] = [
     {
-      label: "app-shell",
-      status: "Active in Angular foundation"
-    },
-    {
       label: "auth",
-      status: "Migrates in Phase 3"
+      status: "Protected routes and session recovery active"
     },
     {
       label: "projects",
-      status: "Integrated in Angular"
+      status: "Scoped CRUD and workspace selection live"
     },
     {
       label: "assets",
-      status: "Integrated in Angular"
+      status: "Upload, metadata, and source retrieval live"
     },
     {
       label: "jobs",
-      status: "Integrated in Angular"
+      status: "Queue state, retries, and outputs visible"
     },
     {
       label: "realtime",
-      status: "Integrated in Angular"
+      status: "Socket sync and fallback delivery active"
+    },
+    {
+      label: "storage",
+      status: "Persistent object storage wired behind API"
     }
   ];
 }
