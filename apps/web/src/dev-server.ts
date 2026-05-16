@@ -30,7 +30,7 @@ const contentSecurityPolicy = [
   "img-src 'self' data:",
   `connect-src 'self' ${apiBaseUrl} ${wsBaseUrl}`,
   "font-src 'self'",
-  "base-uri 'none'",
+  "base-uri 'self'",
   "frame-ancestors 'none'",
   "form-action 'self'"
 ].join("; ");

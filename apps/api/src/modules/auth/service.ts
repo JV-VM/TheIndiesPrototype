@@ -6,6 +6,11 @@ import { HttpError } from "../../http/errors.js";
 import { hashPassword, verifyPassword } from "./password.js";
 import { hashToken } from "./token-hash.js";
 import {
+  DEMO_USER_EMAIL,
+  DEMO_USER_PASSWORD,
+  ensureDemoWorkspace
+} from "./demo-workspace.js";
+import {
   issueAccessToken,
   issueRefreshToken,
   verifyAccessToken,
@@ -51,6 +56,13 @@ export class AuthService {
   }
 
   async login(input: LoginInput): Promise<SessionBundle> {
+    if (
+      input.email === DEMO_USER_EMAIL &&
+      input.password === DEMO_USER_PASSWORD
+    ) {
+      await ensureDemoWorkspace(this.prisma);
+    }
+
     const user = await this.prisma.user.findUnique({
       where: {
         email: input.email
