@@ -6,6 +6,15 @@ import { AppShellComponent } from "./core/layout/app-shell.component";
 
 export const routes: Routes = [
   {
+    path: "",
+    pathMatch: "full",
+    canActivate: [guestGuard],
+    loadComponent: () =>
+      import("./features/landing/pages/landing-page.component").then(
+        (module) => module.LandingPageComponent
+      )
+  },
+  {
     path: "auth",
     canActivate: [guestGuard],
     loadComponent: () =>
@@ -48,6 +57,6 @@ export const routes: Routes = [
   },
   {
     path: "**",
-    redirectTo: "dashboard"
+    redirectTo: ""
   }
 ];

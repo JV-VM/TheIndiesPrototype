@@ -20,6 +20,11 @@ interface AuthCredentials {
   password: string;
 }
 
+const DEMO_CREDENTIALS: AuthCredentials = {
+  email: "demo@theindiesprototype.local",
+  password: "Prototype123!"
+};
+
 @Injectable({
   providedIn: "root"
 })
@@ -73,6 +78,12 @@ export class AuthService {
     const payload = await this.apiClient.auth.register(credentials);
     this.applySession(payload);
     this.noticeService.setSuccess("Account created. Workspace access is active.");
+  }
+
+  async openDemoWorkspace(): Promise<void> {
+    const payload = await this.apiClient.auth.login(DEMO_CREDENTIALS);
+    this.applySession(payload);
+    this.noticeService.setSuccess("Demo workspace opened.");
   }
 
   async logout(options?: { redirectToAuth?: boolean }): Promise<void> {

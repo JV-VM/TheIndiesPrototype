@@ -24,9 +24,9 @@ import { NoticeBannerComponent } from "../../../shared/components/notice-banner.
         <span class="eyebrow">Phase 3 Auth Integration</span>
         <h1>Restore sessions, protect routes, and enter the workspace with the real API.</h1>
         <p>
-          The Angular frontend now uses the existing register, login, refresh,
-          logout, and profile routes. Refresh cookies stay server-owned, while
-          access tokens recover the workspace without a manual reload.
+          The Angular frontend uses the existing register, login, refresh, logout, and profile
+          routes. Refresh cookies stay server-owned, while access tokens recover the workspace
+          without a manual reload.
         </p>
 
         <div class="hero-grid">
@@ -91,6 +91,10 @@ import { NoticeBannerComponent } from "../../../shared/components/notice-banner.
           <tip-button [disabled]="busy() || form.invalid" buttonType="submit">
             {{ busy() ? 'Working...' : mode() === 'signin' ? 'Sign In And Enter' : 'Register And Enter' }}
           </tip-button>
+
+          <tip-button variant="secondary" [disabled]="busy()" buttonType="button" (click)="openDemoWorkspace()">
+            {{ busy() ? 'Opening...' : 'Open demo workspace' }}
+          </tip-button>
         </form>
       </tip-card>
     </main>
@@ -134,6 +138,24 @@ export class AuthPageComponent {
         await this.authService.register(payload);
       }
 
+      await this.router.navigateByUrl("/dashboard");
+    } catch (error) {
+      this.noticeService.setDanger(this.errorMessage(error));
+    } finally {
+      this.busy.set(false);
+    }
+  }
+
+  protected async openDemoWorkspace(): Promise<void> {
+    if (this.busy()) {
+      return;
+    }
+
+    this.busy.set(true);
+    this.noticeService.setNeutral("Opening the seeded demo workspace...");
+
+    try {
+      await this.authService.openDemoWorkspace();
       await this.router.navigateByUrl("/dashboard");
     } catch (error) {
       this.noticeService.setDanger(this.errorMessage(error));
