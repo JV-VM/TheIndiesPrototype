@@ -6,7 +6,7 @@
 
 .stats-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
   gap: 1rem;
   min-width: 0;
 }
@@ -32,8 +32,8 @@
 
 .stat-copy strong {
   font-family: var(--tip-font-heading);
-  font-size: 1.5rem;
-  line-height: 1.05;
+  font-size: clamp(1.25rem, 2.6vw, 1.5rem);
+  line-height: 1.15;
   overflow-wrap: anywhere;
 }
 
@@ -127,5 +127,11 @@
 
   .panel-header {
     display: grid;
+  }
+}
+
+@media (max-width: 720px) {
+  .stats-grid {
+    grid-template-columns: 1fr;
   }
 }
