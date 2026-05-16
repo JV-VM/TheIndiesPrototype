@@ -3,12 +3,15 @@
   align-items: center;
   gap: 0.45rem;
   width: fit-content;
+  max-width: 100%;
   padding: 0.45rem 0.7rem;
   border-radius: 999px;
   border: 1px solid var(--tip-line);
   background: rgba(145, 163, 184, 0.08);
   color: var(--tip-ink-soft);
   font-size: 0.84rem;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .dot {
@@ -16,6 +19,7 @@
   height: 0.5rem;
   border-radius: 50%;
   background: currentColor;
+  flex: none;
 }
 
 .status-pill.success {

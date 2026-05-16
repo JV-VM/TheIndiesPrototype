@@ -16,6 +16,7 @@
 .brand-block {
   display: grid;
   gap: 0.75rem;
+  min-width: 0;
 }
 
 .brand-block h1 {
@@ -26,16 +27,19 @@
 .brand-block p {
   color: var(--tip-muted);
   line-height: 1.65;
+  overflow-wrap: anywhere;
 }
 
 .eyebrow,
 .mini-label,
 .mini-pill {
   width: fit-content;
+  max-width: 100%;
   border-radius: 999px;
   text-transform: uppercase;
   letter-spacing: 0.16em;
   font-size: 0.7rem;
+  overflow-wrap: anywhere;
 }
 
 .eyebrow,
@@ -65,6 +69,8 @@
   display: flex;
   justify-content: space-between;
   gap: 1rem;
+  min-width: 0;
+  flex-wrap: wrap;
   transition:
     border-color 160ms ease,
     transform 160ms ease,
@@ -73,10 +79,12 @@
 
 .nav-item span {
   font-weight: 600;
+  overflow-wrap: anywhere;
 }
 
 .nav-item small {
   color: var(--tip-muted);
+  overflow-wrap: anywhere;
 }
 
 .nav-item:hover,
@@ -96,6 +104,7 @@
   justify-content: space-between;
   gap: 0.75rem;
   align-items: center;
+  flex-wrap: wrap;
 }
 
 .track-grid {
@@ -120,6 +129,7 @@
   color: var(--tip-muted);
   font-size: 0.95rem;
   line-height: 1.5;
+  overflow-wrap: anywhere;
 }
 
 @media (max-width: 1040px) {
