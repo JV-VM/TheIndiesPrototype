@@ -28,9 +28,9 @@ import { ProjectsWorkspaceService } from "../projects-workspace.service";
   template: `
     <div class="projects-page">
       <tip-page-header
-        eyebrow="Phase 4 Projects"
-        title="Move workspace and project CRUD into the Angular shell."
-        description="Project browsing, search, selection, editing, deletion, and pagination now run through the Angular client against the live protected API."
+        eyebrow="Projects workspace"
+        title="Inspect seeded projects, asset context, and the entry point into processing."
+        description="This view exposes the live project inventory behind the protected shell. Use it to inspect how project scope anchors assets, queue handoff, and downstream workflow state."
       >
         <tip-status-pill
           [label]="workspaceService.totalProjects() + ' projects in scope'"
@@ -44,7 +44,7 @@ import { ProjectsWorkspaceService } from "../projects-workspace.service";
         <tip-card class="panel">
           <div class="panel-header">
             <div>
-              <span class="section-label">Workspace Library</span>
+              <span class="section-label">Project inventory</span>
               <h3>Project inventory</h3>
             </div>
             <tip-button
@@ -78,7 +78,7 @@ import { ProjectsWorkspaceService } from "../projects-workspace.service";
           @if (workspaceService.isLoadingList() && workspaceService.projects().length === 0) {
             <tip-loading-state
               title="Loading project library"
-              description="The protected shell is restoring the workspace inventory and selecting the active project."
+              description="The workspace inventory is being restored so project-scoped assets and jobs can be inspected."
             />
           } @else if (workspaceService.projects().length > 0) {
             <div class="project-list">
@@ -120,7 +120,7 @@ import { ProjectsWorkspaceService } from "../projects-workspace.service";
           } @else {
             <tip-empty-state
               title="No projects yet"
-              description="Create the first workspace project here. Once a project exists, later phases will attach assets, jobs, and realtime state to it."
+              description="Create the first project here to establish the scope that assets, jobs, and realtime delivery attach to."
               actionLabel="Create first project"
               (action)="focusCreateNameField()"
             />
@@ -131,8 +131,8 @@ import { ProjectsWorkspaceService } from "../projects-workspace.service";
           <tip-card class="panel">
             <div class="panel-header">
               <div>
-                <span class="section-label">Create Project</span>
-                <h3>New workspace entry</h3>
+                <span class="section-label">Create project</span>
+                <h3>Add a new workspace entry</h3>
               </div>
             </div>
 
@@ -154,7 +154,7 @@ import { ProjectsWorkspaceService } from "../projects-workspace.service";
           <tip-card class="panel">
             <div class="panel-header">
               <div>
-                <span class="section-label">Selected Project</span>
+                <span class="section-label">Selected project</span>
                 <h3>{{ workspaceService.selectedProject()?.name || 'Choose a project' }}</h3>
               </div>
               @if (workspaceService.selectedProject(); as selectedProject) {
@@ -168,7 +168,7 @@ import { ProjectsWorkspaceService } from "../projects-workspace.service";
             @if (workspaceService.isLoadingDetail() && !workspaceService.selectedProject()) {
               <tip-loading-state
                 title="Loading project detail"
-                description="Project metadata and downstream slices are being synchronized for the current selection."
+                description="Project metadata is being synchronized so asset inventory and queue activity can load against the current selection."
               />
             } @else if (workspaceService.selectedProject()) {
               <form class="stack-form" [formGroup]="editForm" (ngSubmit)="updateProject()">
@@ -199,7 +199,7 @@ import { ProjectsWorkspaceService } from "../projects-workspace.service";
             } @else {
               <tip-empty-state
                 title="No project selected"
-                description="Pick a project from the list to edit its details. Empty states stay actionable so the shell explains the next step."
+                description="Pick a project from the list to inspect its metadata, assets, and queue entry points."
                 actionLabel="Refresh library"
                 (action)="refreshProjects()"
               />

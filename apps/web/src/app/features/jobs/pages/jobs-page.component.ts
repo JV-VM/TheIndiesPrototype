@@ -34,9 +34,9 @@ import { ProjectsWorkspaceService } from "../../projects/projects-workspace.serv
   template: `
     <div class="jobs-page">
       <tip-page-header
-        eyebrow="Phase 6 and 7"
-        title="Queue control and live delivery now run in the Angular workspace."
-        description="The jobs view shows active, queued, completed, and failed work, while the realtime slice keeps the project in sync with socket delivery and polling fallback."
+        eyebrow="Queue and delivery"
+        title="Inspect async job execution, retries, outputs, and realtime synchronization."
+        description="This view exposes live queue state for the selected project. Use it to inspect how worker execution, output retrieval, and socket-driven updates behave in the deployed workflow."
       >
         <tip-status-pill
           [label]="(jobsService.collection()?.totalItems || 0) + ' jobs tracked'"
@@ -51,7 +51,7 @@ import { ProjectsWorkspaceService } from "../../projects/projects-workspace.serv
           <tip-card class="panel">
             <div class="panel-header">
               <div>
-                <span class="section-label">Processing Queue</span>
+                <span class="section-label">Processing queue</span>
                 <h3>Project jobs</h3>
               </div>
               <tip-button variant="ghost" (click)="refreshJobs()">Refresh</tip-button>
@@ -60,7 +60,7 @@ import { ProjectsWorkspaceService } from "../../projects/projects-workspace.serv
             @if (!projectsWorkspaceService.selectedProject()) {
               <tip-empty-state
                 title="Select a project"
-                description="Choose a project from the workspace library before reviewing queue activity."
+                description="Choose a project from the workspace first. Queue activity is always inspected in project context."
                 actionLabel="Refresh queue"
                 (action)="refreshJobs()"
               />
@@ -100,7 +100,7 @@ import { ProjectsWorkspaceService } from "../../projects/projects-workspace.serv
               @if (jobsService.isLoading() && jobsService.items().length === 0) {
                 <tip-loading-state
                   title="Loading queue state"
-                  description="The client is reconciling project jobs, retries, and derived output availability."
+                  description="The workspace is reconciling project jobs, retry state, and processed output availability."
                 />
               } @else if (jobsService.items().length > 0) {
                 <div class="job-list">
@@ -173,7 +173,7 @@ import { ProjectsWorkspaceService } from "../../projects/projects-workspace.serv
               } @else {
                 <tip-empty-state
                   title="No jobs yet"
-                  description="Trigger thumbnail generation from the asset inventory to start the first run."
+                  description="Trigger processing from the asset inventory to create the first queued run for this project."
                   actionLabel="Refresh queue"
                   (action)="refreshJobs()"
                 />
