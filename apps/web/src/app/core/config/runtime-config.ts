@@ -15,7 +15,7 @@ declare global {
 const defaultConfig: FrontendRuntimeConfig = {
   apiBaseUrl: "/api",
   wsBaseUrl: "/api/realtime",
-  foundationBasePath: "/frontend-foundation"
+  foundationBasePath: "/"
 };
 
 export const FRONTEND_RUNTIME_CONFIG =

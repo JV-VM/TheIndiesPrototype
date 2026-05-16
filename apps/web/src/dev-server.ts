@@ -6,7 +6,6 @@ import { fileURLToPath } from "node:url";
 import { createCorrelationId, createLogger } from "@tip/shared";
 
 import { renderApiClientModule } from "./api-client.js";
-import { renderPage } from "./app.js";
 
 const port = Number.parseInt(process.env.PORT ?? "3000", 10);
 const apiBaseUrl = process.env.TIP_API_BASE_URL ?? "http://localhost:13001";
@@ -17,6 +16,7 @@ const apiInternalUrl = readHttpUrl(
 );
 const wsBaseUrl = process.env.TIP_WS_BASE_URL ?? "ws://localhost:13001";
 const frontendFoundationBasePath = "/frontend-foundation";
+const browserAppBasePath = "/";
 const appRootDirectory = fileURLToPath(new URL("../..", import.meta.url));
 const browserBuildDirectory = join(appRootDirectory, "dist", "browser");
 const logger = createLogger("tip-web", {
@@ -36,9 +36,9 @@ const contentSecurityPolicy = [
 ].join("; ");
 
 if (process.env.TIP_DRY_RUN === "1") {
-  const html = renderPage({ apiBaseUrl, wsBaseUrl });
   logger.info("dry run complete", {
-    renderedBytes: html.length
+    browserBuildDirectory,
+    browserAppBasePath
   });
   process.exit(0);
 }
@@ -86,20 +86,24 @@ const server = createServer((request, response) => {
     return;
   }
 
-  if (isFrontendFoundationRequest(url.pathname)) {
-    void sendFrontendFoundationResponse(response, requestId, url.pathname);
+  if (shouldRedirectFrontendFoundationRequest(url.pathname)) {
+    const redirectLocation = normalizeFrontendFoundationPath(url.pathname);
+
+    response.writeHead(308, {
+      location: redirectLocation,
+      "cache-control": "no-store",
+      "x-request-id": requestId
+    });
+    response.end();
     return;
   }
 
-  response.writeHead(200, {
-    "content-type": "text/html; charset=utf-8",
-    "x-content-type-options": "nosniff",
-    "referrer-policy": "no-referrer",
-    "x-frame-options": "DENY",
-    "content-security-policy": contentSecurityPolicy,
-    "x-request-id": requestId
-  });
-  response.end(renderPage({ apiBaseUrl, wsBaseUrl }));
+  if (isFrontendFoundationRequest(url.pathname)) {
+    void sendBrowserAppResponse(response, requestId, normalizeFrontendFoundationPath(url.pathname));
+    return;
+  }
+
+  void sendBrowserAppResponse(response, requestId, url.pathname);
 });
 
 server.listen(port, () => {
@@ -187,17 +191,30 @@ function isFrontendFoundationRequest(pathname: string): boolean {
   );
 }
 
-async function sendFrontendFoundationResponse(
+function shouldRedirectFrontendFoundationRequest(pathname: string): boolean {
+  return pathname === frontendFoundationBasePath;
+}
+
+function normalizeFrontendFoundationPath(pathname: string): string {
+  const rewrittenPath = pathname
+    .slice(frontendFoundationBasePath.length)
+    .replace(/^\/+/, "");
+
+  return rewrittenPath.length === 0 ? browserAppBasePath : `/${rewrittenPath}`;
+}
+
+async function sendBrowserAppResponse(
   response: import("node:http").ServerResponse,
   requestId: string,
   pathname: string
 ): Promise<void> {
   const relativePath = pathname
-    .slice(frontendFoundationBasePath.length)
+    .slice(browserAppBasePath.length)
     .replace(/^\/+/, "");
 
   const shouldServeIndex =
-    relativePath.length === 0 || (!relativePath.includes(".") && !pathname.endsWith(".js"));
+    relativePath.length === 0 ||
+    (!relativePath.includes(".") && !pathname.endsWith(".js"));
 
   const candidatePath = normalize(join(browserBuildDirectory, relativePath));
   const isWithinBrowserBuild =
@@ -282,7 +299,7 @@ function injectFrontendRuntimeConfig(indexHtml: string): string {
   const runtimeConfig = JSON.stringify({
     apiBaseUrl,
     wsBaseUrl,
-    foundationBasePath: frontendFoundationBasePath
+    foundationBasePath: browserAppBasePath
   }).replace(/</g, "\\u003c");
 
   return indexHtml.replace(

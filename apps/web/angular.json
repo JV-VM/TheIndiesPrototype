@@ -18,7 +18,7 @@
             "polyfills": ["zone.js"],
             "tsConfig": "tsconfig.app.json",
             "inlineStyleLanguage": "scss",
-            "baseHref": "/frontend-foundation/",
+            "baseHref": "/",
             "styles": ["src/styles.scss"],
             "assets": []
           },
