@@ -1,7 +1,11 @@
 .panel {
-  padding: 1.35rem;
+  min-width: 0;
+}
+
+:host ::ng-deep tip-card.panel > article.tip-card {
+  padding: 20px;
   display: grid;
-  gap: 1rem;
+  gap: 20px;
 }
 
 .panel-header,
@@ -11,12 +15,12 @@
 .pagination-row {
   display: flex;
   justify-content: space-between;
-  gap: 1rem;
+  gap: 20px;
   align-items: start;
 }
 
 .panel-header h3 {
-  margin-top: 0.35rem;
+  margin-top: 10px;
   font-size: 1.35rem;
 }
 
@@ -85,7 +89,7 @@
 }
 
 .upload-dropzone {
-  padding: 1.1rem;
+  padding: 20px;
 }
 
 .upload-dropzone[data-drag="true"] {
@@ -154,14 +158,14 @@
 }
 
 .asset-row {
-  padding: 1rem;
+  padding: 20px;
   display: grid;
   gap: 0.8rem;
 }
 
 .asset-head strong {
   display: block;
-  margin-bottom: 0.35rem;
+  margin-bottom: 10px;
 }
 
 .asset-head p,
