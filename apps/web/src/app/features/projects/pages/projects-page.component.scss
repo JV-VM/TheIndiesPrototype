@@ -18,18 +18,19 @@
 .panel {
   padding: 20px;
   display: grid;
-  gap: 1rem;
+  gap: 20px;
 }
 
 .panel-header {
   display: flex;
   justify-content: space-between;
   align-items: start;
-  gap: 1rem;
+  gap: 20px;
+  margin-bottom: 10px;
 }
 
 .panel-header h3 {
-  margin-top: 0.35rem;
+  margin-top: 10px;
   font-size: 1.35rem;
 }
 
@@ -43,7 +44,7 @@
 .filter-form,
 .stack-form {
   display: grid;
-  gap: 0.9rem;
+  gap: 16px;
 }
 
 .filter-form label,
@@ -73,7 +74,7 @@
 
 .project-list {
   display: grid;
-  gap: 0.75rem;
+  gap: 20px;
 }
 
 .project-list-item {
@@ -86,7 +87,7 @@
   color: var(--tip-ink);
   display: flex;
   justify-content: space-between;
-  gap: 1rem;
+  gap: 20px;
   cursor: pointer;
 }
 
@@ -104,9 +105,16 @@
   margin-bottom: 10px;
 }
 
+.project-list-item p {
+  margin-bottom: 10px;
+}
+
 .project-list-item > span {
   align-self: flex-start;
   margin-bottom: 10px;
+  min-width: 64px;
+  text-align: right;
+  line-height: 1.2;
 }
 
 .pagination-row,
@@ -115,6 +123,10 @@
   align-items: center;
   gap: 0.75rem;
   flex-wrap: wrap;
+}
+
+.pagination-row {
+  margin-top: 10px;
 }
 
 @media (max-width: 980px) {
