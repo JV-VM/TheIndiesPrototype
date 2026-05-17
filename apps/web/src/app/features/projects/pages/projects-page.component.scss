@@ -16,7 +16,7 @@
 }
 
 .panel {
-  padding: 1.35rem;
+  padding: 20px;
   display: grid;
   gap: 1rem;
 }
@@ -81,13 +81,17 @@
   width: 100%;
   border: 1px solid var(--tip-line);
   border-radius: var(--tip-radius-md);
-  padding: 1rem;
+  padding: 20px;
   background: rgba(12, 25, 38, 0.72);
   color: var(--tip-ink);
   display: flex;
   justify-content: space-between;
   gap: 1rem;
   cursor: pointer;
+}
+
+.project-list-item > div {
+  min-width: 0;
 }
 
 .project-list-item[data-active="true"] {
@@ -97,7 +101,12 @@
 
 .project-list-item strong {
   display: block;
-  margin-bottom: 0.35rem;
+  margin-bottom: 10px;
+}
+
+.project-list-item > span {
+  align-self: flex-start;
+  margin-bottom: 10px;
 }
 
 .pagination-row,
